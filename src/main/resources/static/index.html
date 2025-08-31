@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>IoT Analyser Dashboard</title>
+
+    <!-- Tailwind & libs -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.10/dayjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-dayjs@1.0.0/dist/chartjs-adapter-dayjs.bundle.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .dashboard-bg {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            transform: translate(30px, -30px);
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .status-dot{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            position: relative;
+        }
+
+        .status-dot::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: inherit;
+            animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+
+        .flash-green{animation:flashGreen 1s ease}
+        .flash-red{animation:flashRed 1s ease}
+
+        @keyframes flashGreen{
+            from{background: rgba(34, 197, 94, 0.1)}
+            to{background: transparent}
+        }
+        @keyframes flashRed{
+            from{background: rgba(239, 68, 68, 0.1)}
+            to{background: transparent}
+        }
+        @keyframes ping {
+            75%, 100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        .feed-entry{
+            border-left: 4px solid #3b82f6;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .feed-entry:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .feed-entry.anomaly{
+            border-left-color: #ef4444;
+            background: rgba(254, 242, 242, 0.9);
+        }
+
+        .small{
+            font-size: 0.85rem;
+            color: #6b7280;
+            display: block;
+            margin-top: 0.25rem;
+        }
+
+        .debug-log{
+            max-height: 300px;
+            overflow: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 1rem;
+            border-radius: 12px;
+            border: 1px solid #374151;
+        }
+
+        .tab-button {
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 2px;
+        }
+
+        .modal-backdrop {
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-content {
+            transition: transform 0.3s ease;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+
+        .status-active { background-color: #22c55e; }
+        .status-inactive { background-color: #f97316; }
+        .status-error { background-color: #ef4444; }
+        .status-connecting {
+            background-color: #eab308;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            transition: all 0.3s ease;
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+        }
+
+        .section-header {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+            border-left: 4px solid #667eea;
+        }
+
+        .feature-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+<div class="min-h-screen p-4 md:p-6">
+    <div class="max-w-7xl mx-auto">
+        <!-- Enhanced Header -->
+        <header class="dashboard-bg rounded-2xl p-6 mb-8 text-white">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
+                <div class="space-y-2">
+                    <h1 class="text-4xl font-bold bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+                        IoT Analyser Dashboard
+                    </h1>
+                    <p class="text-blue-100 text-lg">
+                        Real-time monitoring and management platform for IoT devices and sensors
+                    </p>
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        <span class="feature-badge">Live Data Streaming</span>
+                        <span class="feature-badge">Device Management</span>
+                        <span class="feature-badge">Anomaly Detection</span>
+                        <span class="feature-badge">Simulation Control</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4 bg-white bg-opacity-20 rounded-xl p-4">
+                    <div class="text-center">
+                        <div class="flex items-center justify-center space-x-2">
+                            <div id="ws-status-dot" class="status-dot status-connecting"></div>
+                            <div id="ws-status-text" class="text-sm font-semibold">Connecting...</div>
+                        </div>
+                        <div class="text-xs text-blue-100 mt-1">WebSocket Connection</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <div class="mb-6">
+            <nav class="flex space-x-1 bg-white rounded-xl p-2 shadow-lg">
+                <button onclick="showTab('dashboard')" class="tab-button active flex-1 py-3 px-4 text-sm font-medium rounded-lg transition-all duration-300">
+                    📊 Dashboard
+                </button>
+                <button onclick="showTab('devices')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">
+                    🔌 Devices
+                </button>
+                <button onclick="showTab('sensors')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">
+                    📡 Sensors
+                </button>
+                <button onclick="showTab('debug')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">
+                    🐛 Debug
+                </button>
+            </nav>
+        </div>
+
+        <main>
+            <!-- Enhanced Dashboard -->
+            <section id="dashboard-tab" class="space-y-6">
+                <!-- Stats Overview -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="card stat-card p-6 relative overflow-hidden">
+                        <div class="relative z-10">
+                            <h3 class="text-sm font-medium text-blue-100 mb-2">Active Devices</h3>
+                            <p id="active-devices-count" class="text-3xl font-bold">0</p>
+                            <p class="text-xs text-blue-100 mt-1">Connected and operational</p>
+                        </div>
+                    </div>
+
+                    <div class="card p-6 bg-gradient-to-br from-red-500 to-pink-600 text-white relative overflow-hidden">
+                        <div class="relative z-10">
+                            <h3 class="text-sm font-medium text-red-100 mb-2">Anomalies (24h)</h3>
+                            <p id="anomalies-count" class="text-3xl font-bold">0</p>
+                            <p class="text-xs text-red-100 mt-1">Unusual readings detected</p>
+                        </div>
+                        <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full transform translate-x-6 -translate-y-6"></div>
+                    </div>
+
+                    <div class="card p-6 bg-gradient-to-br from-green-500 to-emerald-600 text-white relative overflow-hidden">
+                        <div class="relative z-10">
+                            <h3 class="text-sm font-medium text-green-100 mb-2">Total Readings</h3>
+                            <p id="total-readings-count" class="text-3xl font-bold">0</p>
+                            <p class="text-xs text-green-100 mt-1">Sensor measurements collected</p>
+                        </div>
+                        <div class="absolute top-0 right-0 w-20 h-20 bg-white bg-opacity-10 rounded-full transform translate-x-6 -translate-y-6"></div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Live Feed -->
+                    <div class="card p-6 lg:col-span-2">
+                        <div class="section-header rounded-lg p-4 mb-6">
+                            <h2 class="text-xl font-bold text-gray-800 mb-1">📡 Live Data Stream</h2>
+                            <p class="text-sm text-gray-600">Real-time sensor readings from connected IoT devices</p>
+                        </div>
+                        <div id="live-feed" class="space-y-3 max-h-96 overflow-auto pr-2" style="scrollbar-width: thin;"></div>
+                        <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                            <p class="text-xs text-gray-500">
+                                💡 Live feed shows the most recent sensor readings as they arrive via WebSocket connection
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Control Panel -->
+                    <div class="space-y-6">
+                        <!-- Simulator Control -->
+                        <div class="card p-6">
+                            <div class="section-header rounded-lg p-4 mb-4">
+                                <h2 class="text-lg font-bold text-gray-800 mb-1">⚙️ Simulation Control</h2>
+                                <p class="text-xs text-gray-600">Generate test data from virtual IoT devices</p>
+                            </div>
+                            <div class="space-y-3">
+                                <button id="start-sim-btn" class="btn-primary text-white px-4 py-3 rounded-lg w-full font-medium tooltip" data-tooltip="Start generating simulated sensor data">
+                                    ▶️ Start Simulation
+                                </button>
+                                <button id="stop-sim-btn" class="btn-danger text-white px-4 py-3 rounded-lg w-full font-medium tooltip" data-tooltip="Stop the data simulation" disabled>
+                                    ⏹️ Stop Simulation
+                                </button>
+                                <button id="clear-data-btn" class="btn-warning text-white px-4 py-3 rounded-lg w-full font-medium tooltip" data-tooltip="Clear all collected sensor data">
+                                    🗑️ Clear Data
+                                </button>
+                            </div>
+                            <div class="mt-4 p-3 bg-gray-50 rounded-lg">
+                                <small id="dash-sim-status" class="text-sm text-gray-600 font-medium">🔴 Simulator stopped</small>
+                            </div>
+                        </div>
+
+                        <!-- Quick Info -->
+                        <div class="card p-6">
+                            <h3 class="text-lg font-bold text-gray-800 mb-4">📋 System Overview</h3>
+                            <div class="space-y-3 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Connection Status:</span>
+                                    <span id="connection-status" class="font-medium text-yellow-600">Connecting...</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Data Source:</span>
+                                    <span class="font-medium text-gray-800">WebSocket + REST API</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Update Frequency:</span>
+                                    <span class="font-medium text-gray-800">Real-time</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Sensor Data Table -->
+                <div class="card p-6">
+                    <div class="section-header rounded-lg p-4 mb-6">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800 mb-1">📊 Recent Sensor Readings</h2>
+                                <p class="text-sm text-gray-600">Latest 10 measurements from all connected sensors</p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <label class="text-sm font-medium text-gray-700">Filter by type:</label>
+                                <select id="sensor-type-filter" class="rounded-lg border border-gray-300 p-2 text-sm bg-white">
+                                    <option>ALL</option>
+                                    <option>TEMPERATURE</option>
+                                    <option>HUMIDITY</option>
+                                    <option>PRESSURE</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-auto rounded-lg">
+                        <table class="min-w-full">
+                            <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
+                            <tr>
+                                <th class="p-4 text-left font-semibold text-gray-700">Device ID</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Sensor Type</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Value</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Timestamp</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Anomaly Status</th>
+                            </tr>
+                            </thead>
+                            <tbody id="sensor-data-table" class="bg-white divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Enhanced Devices Section -->
+            <section id="devices-tab" class="hidden space-y-6">
+                <div class="card p-6">
+                    <div class="section-header rounded-lg p-4 mb-6">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800 mb-1">🔌 Device Management</h2>
+                                <p class="text-sm text-gray-600">Register, configure, and monitor your IoT devices</p>
+                            </div>
+                            <button id="add-device-btn" class="btn-primary text-white px-6 py-3 rounded-lg font-medium">
+                                ➕ Add New Device
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-6">
+                    <div class="overflow-auto rounded-lg">
+                        <table class="min-w-full">
+                            <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
+                            <tr>
+                                <th class="p-4 text-left font-semibold text-gray-700">Device ID</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Device Name</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Type</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Location</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Status</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="devices-table" class="bg-white divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Enhanced Sensors Section -->
+            <section id="sensors-tab" class="hidden space-y-6">
+                <div class="card p-6">
+                    <div class="section-header rounded-lg p-4 mb-6">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800 mb-1">📡 Sensor Data Repository</h2>
+                                <p class="text-sm text-gray-600">Complete history of all sensor measurements and readings</p>
+                            </div>
+                            <button id="add-sensor-btn" class="btn-primary text-white px-6 py-3 rounded-lg font-medium">
+                                📝 Add Manual Reading
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-6">
+                    <div class="overflow-auto rounded-lg">
+                        <table class="min-w-full">
+                            <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
+                            <tr>
+                                <th class="p-4 text-left font-semibold text-gray-700">Record ID</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Device ID</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Sensor Type</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Value</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Timestamp</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Anomaly</th>
+                                <th class="p-4 text-left font-semibold text-gray-700">Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody id="all-sensors-table" class="bg-white divide-y divide-gray-100"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Enhanced Debug Section -->
+            <section id="debug-tab" class="hidden space-y-6">
+                <div class="card p-6">
+                    <div class="section-header rounded-lg p-4 mb-6">
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-800 mb-1">🐛 System Debug Console</h2>
+                                <p class="text-sm text-gray-600">Real-time system logs and debugging information</p>
+                            </div>
+                            <button id="clear-log-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                                🗑️ Clear Log
+                            </button>
+                        </div>
+                    </div>
+                    <div id="debug-log" class="debug-log"></div>
+                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p class="text-xs text-yellow-800">
+                            💡 Debug console shows WebSocket connections, API calls, errors, and system events in real-time
+                        </p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<!-- Enhanced Device Modal -->
+<div id="device-modal" class="fixed inset-0 z-50 overflow-y-auto hidden">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20">
+        <div class="modal-backdrop fixed inset-0" aria-hidden="true"></div>
+        <div class="modal-content relative bg-white rounded-2xl shadow-2xl transform max-w-lg w-full">
+            <form id="device-form">
+                <div class="p-6">
+                    <div class="flex items-center space-x-3 mb-6">
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                            <span class="text-white text-xl">🔌</span>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900" id="device-modal-title">Add New Device</h3>
+                            <p class="text-sm text-gray-500">Configure a new IoT device for monitoring</p>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="device-id-field">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="device-name" class="block text-sm font-semibold text-gray-700 mb-2">Device Name</label>
+                            <input type="text" id="device-name" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" placeholder="e.g., Temperature Sensor #1" required>
+                        </div>
+                        <div>
+                            <label for="device-type" class="block text-sm font-semibold text-gray-700 mb-2">Device Type</label>
+                            <input type="text" id="device-type" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" placeholder="e.g., Environmental Sensor" required>
+                        </div>
+                        <div>
+                            <label for="device-location" class="block text-sm font-semibold text-gray-700 mb-2">Location</label>
+                            <input type="text" id="device-location" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" placeholder="e.g., Server Room A">
+                        </div>
+                        <div>
+                            <label for="device-status" class="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                            <select id="device-status" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all">
+                                <option>ACTIVE</option>
+                                <option>INACTIVE</option>
+                                <option>ERROR</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-6 py-4 flex space-x-3 rounded-b-2xl">
+                    <button type="submit" class="flex-1 btn-primary text-white py-3 rounded-lg font-medium">
+                        💾 Save Device
+                    </button>
+                    <button type="button" class="cancel-btn flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-lg font-medium transition-all">
+                        ❌ Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Sensor Modal -->
+<div id="sensor-modal" class="fixed inset-0 z-50 overflow-y-auto hidden">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20">
+        <div class="modal-backdrop fixed inset-0" aria-hidden="true"></div>
+        <div class="modal-content relative bg-white rounded-2xl shadow-2xl transform max-w-lg w-full">
+            <form id="sensor-form">
+                <div class="p-6">
+                    <div class="flex items-center space-x-3 mb-6">
+                        <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-600 rounded-full flex items-center justify-center">
+                            <span class="text-white text-xl">📡</span>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-900" id="sensor-modal-title">Add Sensor Reading</h3>
+                            <p class="text-sm text-gray-500">Manually input a sensor measurement</p>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="sensor-id-field">
+                    <div class="space-y-4">
+                        <div>
+                            <label for="sensor-device-id" class="block text-sm font-semibold text-gray-700 mb-2">Device ID</label>
+                            <input type="number" id="sensor-device-id" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" placeholder="Enter device ID" required>
+                        </div>
+                        <div>
+                            <label for="sensor-type" class="block text-sm font-semibold text-gray-700 mb-2">Sensor Type</label>
+                            <select id="sensor-type" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" required>
+                                <option>TEMPERATURE</option>
+                                <option>HUMIDITY</option>
+                                <option>PRESSURE</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="sensor-value" class="block text-sm font-semibold text-gray-700 mb-2">Measurement Value</label>
+                            <input type="number" step="any" id="sensor-value" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" placeholder="Enter measured value" required>
+                        </div>
+                        <div>
+                            <label for="sensor-anomaly" class="block text-sm font-semibold text-gray-700 mb-2">Anomaly Detection</label>
+                            <select id="sensor-anomaly" class="w-full rounded-lg border-2 border-gray-200 p-3 focus:border-blue-500 focus:outline-none transition-all" required>
+                                <option value="false">Normal Reading</option>
+                                <option value="true">Anomalous Reading</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-6 py-4 flex space-x-3 rounded-b-2xl">
+                    <button type="submit" class="flex-1 btn-primary text-white py-3 rounded-lg font-medium">
+                        💾 Save Reading
+                    </button>
+                    <button type="button" class="cancel-btn flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-lg font-medium transition-all">
+                        ❌ Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Toast -->
+<div id="toast" class="fixed bottom-6 right-6 opacity-0 transition-all duration-300 transform translate-y-2"></div>
+
+<script>
+    /* ---------------- Config & state ---------------- */
+    const API_BASE = 'http://localhost:8083';
+    const WEBSOCKET_URL = `${API_BASE}/ws-sensor-data`;
+
+    // tweak these to tune performance / responsiveness
+    const FLUSH_INTERVAL_MS = 500;    // flush incoming buffer to UI every X ms
+    const MAX_LIVE_FEED = 200;       // keep at most this many DOM entries in live feed
+    const MAX_DEBUG_LINES = 200;     // debug log cap
+    const MAX_CHART_POINTS = 200;    // points per dataset
+
+    const state = {
+      devices: new Map(),
+      sensorData: new Map(),
+      stompClient: null,
+      chart: null,
+      totalReadings: 0,
+      anomalies: 0,
+      nextSensorId: 1,
+      isSimulatorRunning: false,
+      incomingBuffer: [],   // buffer of incoming readings
+      flushTimer: null,
+      debugLines: []        // keep last debug lines
+    };
+
+    /* ---------------- Utilities ---------------- */
+    const debugLogEl = document.getElementById('debug-log');
+    function debugLog(msg) {
+      const ts = dayjs().format('HH:mm:ss.SSS');
+      const line = `[${ts}] ${msg}`;
+      // keep array capped
+      state.debugLines.push(line);
+      if (state.debugLines.length > MAX_DEBUG_LINES) state.debugLines.shift();
+      // append to DOM incrementally (avoid re-rendering entire log)
+      if (debugLogEl) {
+        const div = document.createElement('div');
+        div.textContent = line;
+        div.className = 'text-green-400';
+        debugLogEl.appendChild(div);
+        // remove oldest DOM child if over cap
+        while (debugLogEl.children.length > MAX_DEBUG_LINES) debugLogEl.removeChild(debugLogEl.firstChild);
+        debugLogEl.scrollTop = debugLogEl.scrollHeight;
+      } else {
+        console.log(line);
+      }
+    }
+
+    function toast(message, isError=false, duration=4000) {
+      const t = document.getElementById('toast');
+      t.textContent = message;
+      t.className = `fixed bottom-6 right-6 px-6 py-3 rounded-xl shadow-lg font-medium transform transition-all duration-300 ${
+        isError ? 'bg-red-500 text-white' : 'bg-white text-gray-800 border border-gray-200'
+      }`;
+      t.style.opacity = '1';
+      t.style.transform = 'translateY(0)';
+      setTimeout(()=> {
+        t.style.opacity='0';
+        t.style.transform='translateY(8px)';
+      }, duration);
+    }
+
+    /* ---------------- Modal Management ---------------- */
+    const openModal = (modalId, title) => {
+        const modal = document.getElementById(modalId);
+        const heading = modal.querySelector('h3');
+        if (heading) heading.textContent = title;
+        modal.classList.remove('hidden');
+        return modal;
+    };
+    const closeModal = (modalId) => document.getElementById(modalId).classList.add('hidden');
+
+    const openDeviceModal = (device = null) => {
+        openModal('device-modal', device ? 'Edit Device Configuration' : 'Add New IoT Device');
+        document.getElementById('device-id-field').value = device ? (device.deviceId ?? device.id ?? '') : '';
+        document.getElementById('device-name').value = device ? (device.deviceName ?? device.name ?? '') : '';
+        document.getElementById('device-type').value = device ? (device.deviceType ?? device.type ?? '') : '';
+        document.getElementById('device-location').value = device ? (device.location ?? '') : '';
+        document.getElementById('device-status').value = device ? (device.status ?? 'ACTIVE') : 'ACTIVE';
+    };
+
+    const openSensorModal = (sensorData = null) => {
+        openModal('sensor-modal', sensorData ? `Edit Sensor Reading #${sensorData.id}` : 'Add New Sensor Reading');
+        document.getElementById('sensor-id-field').value = sensorData ? sensorData.id : '';
+        document.getElementById('sensor-device-id').value = sensorData ? sensorData.deviceId : '';
+        document.getElementById('sensor-type').value = sensorData ? sensorData.sensorType : 'TEMPERATURE';
+        document.getElementById('sensor-value').value = sensorData ? sensorData.value : '';
+        document.getElementById('sensor-anomaly').value = sensorData ? String(sensorData.anomaly) : 'false';
+        document.getElementById('sensor-device-id').disabled = !!sensorData;
+        document.getElementById('sensor-type').disabled = !!sensorData;
+    };
+
+    /* ---------------- Enhanced Renderers ---------------- */
+    function renderDevicesTable() {
+      const tb = document.getElementById('devices-table');
+      tb.innerHTML = '';
+      if (state.devices.size === 0) {
+        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="6">
+          <div class="flex flex-col items-center space-y-2">
+            <span class="text-4xl">🔌</span>
+            <span>No devices registered yet</span>
+            <span class="text-xs">Add your first IoT device to start monitoring</span>
+          </div>
+        </td></tr>`;
+        document.getElementById('active-devices-count').textContent = 0;
+        return;
+      }
+      const list = Array.from(state.devices.values()).sort((a,b)=>{
+        const aId = Number(a.deviceId ?? a.id ?? 0);
+        const bId = Number(b.deviceId ?? b.id ?? 0);
+        return aId - bId;
+      });
+      const frag = document.createDocumentFragment();
+      list.forEach(d => {
+        const id = d.deviceId ?? d.id;
+        const name = d.deviceName ?? d.name ?? '—';
+        const type = d.deviceType ?? d.type ?? '—';
+        const location = d.location ?? '—';
+        const status = (d.status ?? 'ACTIVE').toString();
+        const statusClass = status.toLowerCase();
+        const statusIcon = status === 'ACTIVE' ? '🟢' : status === 'INACTIVE' ? '🟡' : '🔴';
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+        tr.innerHTML = `
+          <td class="p-4 font-mono text-sm">#${id}</td>
+          <td class="p-4 font-medium">${name}</td>
+          <td class="p-4"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg text-xs font-medium">${type}</span></td>
+          <td class="p-4 text-gray-600">${location}</td>
+          <td class="p-4">
+            <div class="flex items-center space-x-2">
+              <span>${statusIcon}</span>
+              <span class="font-medium">${status}</span>
+            </div>
+          </td>
+          <td class="p-4">
+            <div class="flex space-x-2">
+              <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editDevice(${id})">✏️ Edit</button>
+              <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteDevice(${id})">🗑️ Delete</button>
+            </div>
+          </td>`;
+        frag.appendChild(tr);
+      });
+      tb.appendChild(frag);
+      const activeCount = list.filter(d => (d.status ?? 'ACTIVE') === 'ACTIVE').length;
+      document.getElementById('active-devices-count').textContent = activeCount;
+    }
+
+    function renderSensorDataTable() {
+      const tb = document.getElementById('sensor-data-table');
+      const filter = document.getElementById('sensor-type-filter').value;
+      tb.innerHTML = '';
+      const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp));
+      const filtered = all.filter(x => filter === 'ALL' || x.sensorType === filter).slice(0, 10);
+      if (filtered.length === 0) {
+        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="5">
+          <div class="flex flex-col items-center space-y-2">
+            <span class="text-4xl">📊</span>
+            <span>No sensor data available</span>
+            <span class="text-xs">Start the simulator or add manual readings to see data</span>
+          </div>
+        </td></tr>`;
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      filtered.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+        const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
+                          d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+        tr.innerHTML = `
+          <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
+          <td class="p-4">
+            <div class="flex items-center space-x-2">
+              <span>${sensorIcon}</span>
+              <span class="font-medium">${d.sensorType}</span>
+            </div>
+          </td>
+          <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
+          <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('HH:mm:ss')}</td>
+          <td class="p-4">
+            ${d.anomaly ?
+              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
+              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
+          </td>`;
+        frag.appendChild(tr);
+      });
+      tb.appendChild(frag);
+    }
+
+    function renderAllSensorDataTable() {
+      const tb = document.getElementById('all-sensors-table');
+      if (!tb) return;
+      tb.innerHTML = '';
+      const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 200);
+      if (all.length === 0) {
+        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="7">
+          <div class="flex flex-col items-center space-y-2">
+            <span class="text-4xl">📈</span>
+            <span>No sensor readings in database</span>
+            <span class="text-xs">Sensor data will appear here as it's collected</span>
+          </div>
+        </td></tr>`;
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      all.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+        const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
+                          d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+        tr.innerHTML = `
+          <td class="p-4 font-mono text-sm">#${d.id}</td>
+          <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
+          <td class="p-4">
+            <div class="flex items-center space-x-2">
+              <span>${sensorIcon}</span>
+              <span class="font-medium">${d.sensorType}</span>
+            </div>
+          </td>
+          <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
+          <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
+          <td class="p-4">
+            ${d.anomaly ?
+              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
+              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
+          </td>
+          <td class="p-4">
+            <div class="flex space-x-2">
+              <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editSensorData(${d.id})">✏️ Edit</button>
+              <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteSensorData(${d.id})">🗑️ Delete</button>
+            </div>
+          </td>`;
+        frag.appendChild(tr);
+      });
+      tb.appendChild(frag);
+    }
+
+    /* ---------------- Chart (canvas removed from DOM — defensive) ---------------- */
+    const sensorCanvas = document.getElementById('sensorChart'); // intentionally null (chart removed)
+    const ctx = sensorCanvas ? sensorCanvas.getContext('2d') : null;
+
+    function initChart() {
+      try {
+        if (!ctx) return; // chart intentionally removed — no-op
+        state.chart = new Chart(ctx, {
+          type:'line',
+          data:{datasets:[{label:'Temperature (°C)', data:[], borderColor:'rgb(59,130,246)', tension:0.3, fill:true}]},
+          options:{scales:{x:{type:'time',time:{unit:'second',displayFormats:{second:'HH:mm:ss'}}}, y:{title:{text:'°C'}}}, animation:{duration:200}}
+        });
+      } catch(e){ debugLog('Chart init err: '+(e.message||e)); }
+    }
+    function batchPushChartPoints(points) {
+      if (!state.chart || !points || points.length === 0) return;
+      const ds = state.chart.data.datasets[0];
+      for (const p of points) ds.data.push(p);
+      if (ds.data.length > MAX_CHART_POINTS) ds.data.splice(0, ds.data.length - MAX_CHART_POINTS);
+      state.chart.update('none');
+    }
+
+    function updateChart(reading) {
+      try {
+        if (!reading || !state.chart) return;
+        if (reading.sensorType === 'TEMPERATURE') {
+          const pt = { x: new Date(reading.timestamp || new Date()), y: parseFloat(reading.value) };
+          batchPushChartPoints([pt]);
+        }
+      } catch (e) { debugLog('updateChart err: ' + (e.message||e)); }
+    }
+
+    /* ---------------- Enhanced Live feed (batched) ---------------- */
+    function batchAddLiveFeedEntries(entries) {
+      if (!entries || entries.length === 0) return;
+      const feed = document.getElementById('live-feed');
+      if (!feed) return;
+      const frag = document.createDocumentFragment();
+      entries.forEach(reading => {
+        const entry = document.createElement('div');
+        entry.className = 'feed-entry' + (reading.anomaly ? ' anomaly' : '');
+        const ts = reading.timestamp ? dayjs(reading.timestamp).format('YYYY-MM-DD HH:mm:ss') : dayjs().format('YYYY-MM-DD HH:mm:ss');
+
+        if (reading.raw) {
+          entry.innerHTML = `<div class="bg-gray-800 text-green-400 p-3 rounded-lg font-mono text-xs"><pre>${reading.raw}</pre></div>`;
+          entry.classList.add('flash-green');
+        } else {
+          const sensorIcon = reading.sensorType === 'TEMPERATURE' ? '🌡️' :
+                            reading.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+          const deviceName = reading.deviceName ?? `Device #${reading.deviceId}`;
+          const imageHtml = reading.imageUrl ? `<div style="margin-top:.75rem"><img src="${reading.imageUrl}" alt="img" style="max-width:100%;max-height:120px;border-radius:8px;border:2px solid #e5e7eb" /></div>` : '';
+
+          entry.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center space-x-3">
+                <span class="text-lg">${sensorIcon}</span>
+                <div>
+                  <div class="font-semibold text-gray-800">${deviceName}</div>
+                  <div class="text-xs text-gray-500">${reading.sensorType} Sensor</div>
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-xl font-bold text-gray-800">${reading.value} ${reading.unit ?? ''}</div>
+                ${reading.anomaly ? '<span class="text-xs text-red-600 font-medium">⚠️ ANOMALY</span>' : '<span class="text-xs text-green-600 font-medium">✅ NORMAL</span>'}
+              </div>
+            </div>
+            <div class="small flex justify-between">
+              <span>${ts}</span>
+            </div>
+            ${imageHtml}`;
+          entry.classList.add(reading.anomaly ? 'flash-red' : 'flash-green');
+        }
+        frag.prepend ? frag.prepend(entry) : frag.appendChild(entry);
+      });
+
+      const nodes = Array.from(frag.childNodes);
+      nodes.reverse().forEach(n => feed.prepend(n));
+      while (feed.children.length > MAX_LIVE_FEED) feed.removeChild(feed.lastChild);
+
+      setTimeout(()=> {
+        const removes = feed.querySelectorAll('.flash-green, .flash-red');
+        removes.forEach(el => el.classList.remove('flash-green','flash-red'));
+      }, 1200);
+    }
+
+    /* ---------------- CRUD Operations (devices) ---------------- */
+    async function loadDevices(){
+      try {
+        const res = await fetch(`${API_BASE}/device/detail`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arr = await res.json();
+        state.devices.clear();
+        arr.forEach(d => {
+          const id = Number(d.deviceId ?? d.id);
+          state.devices.set(id, {...d, deviceId: id});
+        });
+        renderDevicesTable();
+      } catch (e) {
+        debugLog('Failed loadDevices (detail): '+(e.message||e));
+        try {
+          const res2 = await fetch(`${API_BASE}/device`);
+          if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+          const arr2 = await res2.json();
+          state.devices.clear();
+          arr2.forEach((d, idx) => {
+            const id = Number(d.deviceId ?? d.id ?? (idx+1));
+            state.devices.set(id, {...d, deviceId:id});
+          });
+          renderDevicesTable();
+        } catch (err2) {
+          debugLog('Fallback loadDevices failed: '+(err2.message||err2));
+          toast('Failed to load devices', true);
+          renderDevicesTable();
+        }
+      }
+    }
+
+    async function deleteDevice(id){
+      if (!confirm(`Delete device ${id}?`)) return;
+      try {
+        const res = await fetch(`${API_BASE}/device/${id}`, { method:'DELETE' });
+        if (res.ok || res.status === 204) {
+          toast('Device deleted successfully');
+          state.devices.delete(Number(id));
+          renderDevicesTable();
+          return;
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (e) {
+        debugLog('deleteDevice err: '+(e.message||e));
+        state.devices.delete(Number(id));
+        renderDevicesTable();
+        toast('Device deleted (local)');
+      }
+    }
+
+    window.editDevice = function(id) {
+        const device = state.devices.get(Number(id));
+        if (device) openDeviceModal(device);
+    };
+
+    window.deleteDevice = deleteDevice;
+
+    const onDeviceFormSubmit = async (e) => {
+        e.preventDefault();
+        const idRaw = document.getElementById('device-id-field').value;
+        const id = idRaw ? Number(idRaw) : null;
+        const payload = {
+            deviceName: document.getElementById('device-name').value,
+            deviceType: document.getElementById('device-type').value
+        };
+        const status = document.getElementById('device-status').value;
+        const location = document.getElementById('device-location').value;
+
+        if (id) {
+            try {
+                const res = await fetch(`${API_BASE}/device/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({...payload, status})
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const existing = state.devices.get(id) || {};
+                state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
+                toast('Device updated successfully');
+            } catch (e) {
+                debugLog('Failed to update device via API: '+(e.message||e));
+                const existing = state.devices.get(id) || {};
+                state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
+                toast('Device updated (local)');
+            }
+        } else {
+            try {
+                const res = await fetch(`${API_BASE}/device`, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const created = await res.json();
+                const newId = Number(created.deviceId ?? created.id ?? (Math.max(0, ...Array.from(state.devices.keys())) + 1));
+                const deviceObj = {
+                  deviceId: newId,
+                  ...created,
+                  deviceName: created.deviceName ?? payload.deviceName,
+                  deviceType: created.deviceType ?? payload.deviceType,
+                  registeredAt: created.registeredAt ?? new Date().toISOString(),
+                  status: created.status ?? 'ACTIVE',
+                  location
+                };
+                state.devices.set(newId, deviceObj);
+                toast('Device created successfully');
+            } catch (e) {
+                debugLog('Failed to create device via API: '+(e.message||e));
+                const newId = Math.max(0, ...Array.from(state.devices.keys())) + 1;
+                state.devices.set(newId, {
+                    id: newId, deviceId: newId,
+                    deviceName: payload.deviceName, deviceType: payload.deviceType,
+                    status: status || 'ACTIVE', location,
+                    registeredAt: new Date().toISOString()
+                });
+                toast('Device created (local)');
+            }
+        }
+
+        renderDevicesTable();
+        closeModal('device-modal');
+    };
+
+    /* ---------------- Sensors CRUD ---------------- */
+    async function loadSensors(){
+      try {
+        const res = await fetch(`${API_BASE}/sensor`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arr = await res.json();
+        state.sensorData.clear();
+        arr.slice(-200).forEach(s => {
+          const id = s.id ?? (s.sensorId ?? state.nextSensorId++);
+          s.id = id;
+          state.sensorData.set(id, s);
+          state.nextSensorId = Math.max(state.nextSensorId, id+1);
+        });
+        renderSensorDataTable();
+        renderAllSensorDataTable();
+      } catch (e) {
+        debugLog('loadSensors err: '+(e.message||e));
+        toast('Failed to load sensors', true);
+      }
+    }
+
+    async function deleteSensorData(id){
+      if (!confirm(`Delete sensor record ${id}?`)) return;
+      try {
+        const res = await fetch(`${API_BASE}/sensor/${id}`, { method:'DELETE' });
+        if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+        const reading = state.sensorData.get(id);
+        if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
+        state.sensorData.delete(id);
+        state.totalReadings = Math.max(0, state.totalReadings - 1);
+        document.getElementById('total-readings-count').textContent = state.totalReadings;
+        document.getElementById('anomalies-count').textContent = state.anomalies;
+        renderAllSensorDataTable();
+        renderSensorDataTable();
+        toast('Sensor record deleted');
+      } catch (e) {
+        debugLog('deleteSensorData err: '+(e.message||e));
+        const reading = state.sensorData.get(id);
+        if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
+        state.sensorData.delete(id);
+        state.totalReadings = Math.max(0, state.totalReadings - 1);
+        document.getElementById('total-readings-count').textContent = state.totalReadings;
+        document.getElementById('anomalies-count').textContent = state.anomalies;
+        renderAllSensorDataTable();
+        renderSensorDataTable();
+        toast('Sensor record deleted (local)');
+      }
+    }
+
+    window.editSensorData = function(id) {
+        const sensor = state.sensorData.get(id);
+        if (sensor) openSensorModal(sensor);
+    };
+
+    window.deleteSensorData = deleteSensorData;
+
+    const onSensorFormSubmit = (e) => {
+        e.preventDefault();
+        const idRaw = document.getElementById('sensor-id-field').value;
+        const id = idRaw ? parseInt(idRaw) : null;
+        const sensorData = {
+            deviceId: parseInt(document.getElementById('sensor-device-id').value),
+            sensorType: document.getElementById('sensor-type').value,
+            value: parseFloat(document.getElementById('sensor-value').value),
+            anomaly: document.getElementById('sensor-anomaly').value === 'true',
+            timestamp: new Date().toISOString()
+        };
+
+        if (id) {
+            debugLog(`Updating sensor reading ${id}`);
+            const existing = state.sensorData.get(id);
+            state.sensorData.set(id, { ...existing, ...sensorData, id });
+            toast('Sensor reading updated');
+        } else {
+            debugLog(`Creating new sensor reading`);
+            const newId = state.nextSensorId++;
+            state.sensorData.set(newId, {
+                id: newId,
+                ...sensorData
+            });
+            state.totalReadings++;
+            if (sensorData.anomaly) state.anomalies++;
+
+            document.getElementById('total-readings-count').textContent = state.totalReadings;
+            document.getElementById('anomalies-count').textContent = state.anomalies;
+
+            // small immediate UI update
+            updateChart(sensorData);
+            batchAddLiveFeedEntries([sensorData]);
+            toast('Sensor reading created');
+        }
+
+        renderSensorDataTable();
+        renderAllSensorDataTable();
+        closeModal('sensor-modal');
+    };
+
+    /* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
+    function updateWsStatus(connected) {
+        const dot = document.getElementById('ws-status-dot');
+        const text = document.getElementById('ws-status-text');
+        const connectionStatus = document.getElementById('connection-status');
+
+        if (!dot || !text) return;
+        if (connected) {
+            dot.className = 'status-dot status-active';
+            text.textContent = 'Connected';
+            if (connectionStatus) connectionStatus.textContent = 'Connected';
+            if (connectionStatus) connectionStatus.className = 'font-medium text-green-600';
+        } else {
+            dot.className = 'status-dot status-error';
+            text.textContent = 'Disconnected';
+            if (connectionStatus) connectionStatus.textContent = 'Disconnected';
+            if (connectionStatus) connectionStatus.className = 'font-medium text-red-600';
+        }
+    }
+
+    function startFlushTimerIfNeeded() {
+      if (state.flushTimer) return;
+      state.flushTimer = setInterval(flushIncomingBuffer, FLUSH_INTERVAL_MS);
+    }
+
+    function stopFlushTimerIfEmpty() {
+      if (state.flushTimer && state.incomingBuffer.length === 0) {
+        clearInterval(state.flushTimer);
+        state.flushTimer = null;
+      }
+    }
+
+    function flushIncomingBuffer() {
+      const buf = state.incomingBuffer.splice(0, 1000); // take at most 1000 per flush
+      if (!buf || buf.length === 0) {
+        stopFlushTimerIfEmpty();
+        return;
+      }
+
+      // process buffered readings in batch
+      const chartPoints = [];
+      const feedEntries = [];
+      let anomaliesDelta = 0;
+      buf.forEach(reading => {
+        // ensure id and timestamp
+        const id = reading.id ?? state.nextSensorId++;
+        reading.id = id;
+        if (!reading.timestamp) reading.timestamp = new Date().toISOString();
+        state.sensorData.set(id, reading);
+        state.totalReadings++;
+        if (reading.anomaly) anomaliesDelta++;
+
+        // chart point if temperature
+        if (reading.sensorType === 'TEMPERATURE') {
+          chartPoints.push({x: new Date(reading.timestamp), y: parseFloat(reading.value)});
+        }
+
+        feedEntries.push(reading);
+      });
+
+      state.anomalies += anomaliesDelta;
+      // update counters once
+      document.getElementById('total-readings-count').textContent = state.totalReadings;
+      document.getElementById('anomalies-count').textContent = state.anomalies;
+
+      // batch update chart and feed
+      if (chartPoints.length) batchPushChartPoints(chartPoints);
+      batchAddLiveFeedEntries(feedEntries);
+
+      // update tables
+      renderSensorDataTable();
+      renderAllSensorDataTable();
+    }
+
+    /* WebSocket connect */
+    function connectWebSocket() {
+        debugLog('Attempting WebSocket connection...');
+        try {
+            const socketFactory = () => new SockJS(WEBSOCKET_URL);
+            state.stompClient = new StompJs.Client({
+                webSocketFactory: socketFactory,
+                reconnectDelay: 5000,
+                heartbeatIncoming: 4000,
+                heartbeatOutgoing: 4000
+            });
+
+            state.stompClient.onConnect = (frame) => {
+                debugLog('WebSocket connected');
+                updateWsStatus(true);
+                toast('WebSocket connected successfully');
+
+                // sensor-data subscription: push to buffer, not DOM
+                state.stompClient.subscribe('/topic/sensor-data', (message) => {
+                    try {
+                        const reading = JSON.parse(message.body);
+                        // push to incoming buffer
+                        state.incomingBuffer.push(reading);
+                        startFlushTimerIfNeeded();
+                    } catch (e) {
+                        debugLog('Error parsing sensor message: ' + (e.message||e));
+                    }
+                });
+
+                // device-status subscription: applies directly (low volume)
+                state.stompClient.subscribe('/topic/device-status', (message) => {
+                    try {
+                        const deviceUpdate = JSON.parse(message.body);
+                        debugLog(`Device status update: ${deviceUpdate.deviceId} - ${deviceUpdate.status}`);
+                        const key = Number(deviceUpdate.deviceId);
+                        const device = state.devices.get(key);
+                        if (device) {
+                            device.status = deviceUpdate.status;
+                            state.devices.set(key, device);
+                            renderDevicesTable();
+                        }
+                    } catch (e) {
+                        debugLog('Error processing device status: ' + (e.message||e));
+                    }
+                });
+            };
+
+            state.stompClient.onStompError = (frame) => {
+                debugLog('STOMP error: ' + (frame && frame.headers ? frame.headers['message'] : JSON.stringify(frame)));
+                updateWsStatus(false);
+                toast('WebSocket error occurred', true);
+            };
+
+            state.stompClient.onDisconnect = () => {
+                debugLog('WebSocket disconnected');
+                updateWsStatus(false);
+            };
+
+            state.stompClient.activate();
+        } catch (e) {
+            debugLog('Failed to connect WebSocket: ' + (e.message||e));
+            updateWsStatus(false);
+            toast('WebSocket connection failed', true);
+        }
+    }
+
+    /* ---------------- Enhanced Simulator Controls ---------------- */
+    async function startSimulator() {
+        try {
+            debugLog('Starting simulator...');
+            const res = await fetch(`${API_BASE}/admin/simulator/start`, { method: 'POST' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            state.isSimulatorRunning = true;
+            const startBtn = document.getElementById('start-sim-btn');
+            const stopBtn = document.getElementById('stop-sim-btn');
+            if (startBtn) startBtn.disabled = true;
+            if (stopBtn) stopBtn.disabled = false;
+            const statusEl = document.getElementById('dash-sim-status');
+            if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+            toast('Simulator started successfully');
+            debugLog('Simulator started successfully');
+        } catch (e) {
+            debugLog('Failed to start simulator: ' + (e.message||e));
+            // fallback to local UI state so admin isn't locked out
+            state.isSimulatorRunning = true;
+            const startBtn = document.getElementById('start-sim-btn');
+            const stopBtn = document.getElementById('stop-sim-btn');
+            if (startBtn) startBtn.disabled = true;
+            if (stopBtn) stopBtn.disabled = false;
+            const statusEl = document.getElementById('dash-sim-status');
+            if (statusEl) statusEl.innerHTML = '🟡 <strong>Simulator running (local)</strong>';
+            toast('Simulator started (local fallback)');
+        }
+    }
+
+    async function stopSimulator() {
+        const startBtn = document.getElementById('start-sim-btn');
+        const stopBtn = document.getElementById('stop-sim-btn');
+        try {
+            debugLog('Stopping simulator...');
+            const res = await fetch(`${API_BASE}/admin/simulator/stop`, { method: 'POST' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            state.isSimulatorRunning = false;
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = true;
+            const statusEl = document.getElementById('dash-sim-status');
+            if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+            toast('Simulator stopped successfully');
+            debugLog('Simulator stopped successfully');
+        } catch (e) {
+            debugLog('Failed to stop simulator (server err): ' + (e.message||e));
+            // IMPORTANT: update the UI even when the server call fails to avoid a non-responsive Stop button
+            state.isSimulatorRunning = false;
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = true;
+            const statusEl = document.getElementById('dash-sim-status');
+            if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped (local)</strong>';
+            toast('Simulator stopped (local fallback)');
+        }
+    }
+
+    async function clearAllData() {
+        if (!confirm('Clear all sensor data and reset counters? This action cannot be undone.')) return;
+
+        try {
+            debugLog('Clearing all data...');
+            const res = await fetch(`${API_BASE}/sensor/clear`, { method: 'DELETE' });
+            if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+
+            state.sensorData.clear();
+            state.totalReadings = 0;
+            state.anomalies = 0;
+
+            document.getElementById('total-readings-count').textContent = 0;
+            document.getElementById('anomalies-count').textContent = 0;
+
+            renderSensorDataTable();
+            renderAllSensorDataTable();
+
+            if (state.chart) {
+                state.chart.data.datasets[0].data = [];
+                state.chart.update();
+            }
+
+            document.getElementById('live-feed').innerHTML = '';
+            toast('All data cleared successfully');
+            debugLog('Data cleared successfully');
+        } catch (e) {
+            debugLog('Failed to clear data: ' + (e.message||e));
+            // Fallback to local clear
+            state.sensorData.clear();
+            state.totalReadings = 0;
+            state.anomalies = 0;
+
+            document.getElementById('total-readings-count').textContent = 0;
+            document.getElementById('anomalies-count').textContent = 0;
+
+            renderSensorDataTable();
+            renderAllSensorDataTable();
+
+            if (state.chart) {
+                state.chart.data.datasets[0].data = [];
+                state.chart.update();
+            }
+
+            document.getElementById('live-feed').innerHTML = '';
+            toast('Data cleared (local)');
+        }
+    }
+
+    async function controlDevice(action, deviceIdParam=null) {
+        const valueFromInput = deviceIdParam ?? document.getElementById('device-id-input')?.value;
+        const deviceId = valueFromInput ? String(valueFromInput).trim() : '';
+        if (!deviceId) {
+            toast('Please enter a device ID', true);
+            return;
+        }
+
+        try {
+            debugLog(`${action} device ${deviceId}...`);
+            const endpoint = action === 'disconnect' ? 'disconnect' :
+                           action === 'reconnect' ? 'reconnect' : 'inject-anomaly';
+
+            const res = await fetch(`${API_BASE}/admin/simulator/${endpoint}/${deviceId}`, { method: 'POST' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            toast(`Device ${deviceId}: ${action} successful`);
+            debugLog(`Device ${deviceId}: ${action} completed`);
+        } catch (e) {
+            debugLog(`Failed to ${action} device: ` + (e.message||e));
+            toast(`Failed to ${action} device`, true);
+        }
+    }
+
+    /* ---------------- Enhanced Tabs & UI wiring ---------------- */
+    function showTab(tabName) {
+        const tabs = ['dashboard', 'devices', 'sensors', 'debug'];
+        tabs.forEach(t => {
+            const tab = document.getElementById(`${t}-tab`);
+            const btn = document.querySelector(`[onclick="showTab('${t}')"]`);
+            if (t === tabName) {
+                tab.classList.remove('hidden');
+                btn.classList.add('active');
+                btn.classList.remove('text-gray-500');
+            } else {
+                tab.classList.add('hidden');
+                btn.classList.remove('active');
+                btn.classList.add('text-gray-500');
+            }
+        });
+    }
+
+    /* ---------------- Event Listeners ---------------- */
+    document.addEventListener('DOMContentLoaded', () => {
+        initChart();
+        loadDevices();
+        loadSensors();
+        connectWebSocket();
+
+        document.getElementById('device-form') && document.getElementById('device-form').addEventListener('submit', onDeviceFormSubmit);
+        document.getElementById('sensor-form') && document.getElementById('sensor-form').addEventListener('submit', onSensorFormSubmit);
+
+        document.getElementById('add-device-btn') && document.getElementById('add-device-btn').addEventListener('click', () => openDeviceModal());
+        document.getElementById('add-sensor-btn') && document.getElementById('add-sensor-btn').addEventListener('click', () => openSensorModal());
+
+        document.querySelectorAll('.cancel-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const modal = e.target.closest('.fixed');
+                if (modal) modal.classList.add('hidden');
+            });
+        });
+
+        // Admin simulator (dashboard)
+        const startBtn = document.getElementById('start-sim-btn');
+        const stopBtn = document.getElementById('stop-sim-btn');
+        const clearBtn = document.getElementById('clear-data-btn');
+        if (startBtn) startBtn.addEventListener('click', startSimulator);
+        if (stopBtn) stopBtn.addEventListener('click', stopSimulator);
+        if (clearBtn) clearBtn.addEventListener('click', clearAllData);
+
+        document.getElementById('clear-log-btn') && document.getElementById('clear-log-btn').addEventListener('click', () => {
+            if (debugLogEl) debugLogEl.innerHTML = '';
+            state.debugLines = [];
+            debugLog('Debug log cleared by user');
+        });
+
+        document.getElementById('sensor-type-filter') && document.getElementById('sensor-type-filter').addEventListener('change', renderSensorDataTable);
+
+        debugLog('Modern IoT Dashboard initialized successfully');
+    });
+    async function stopSimulator() {
+    const startBtn = document.getElementById('start-sim-btn');
+    const stopBtn = document.getElementById('stop-sim-btn');
+
+    try {
+        debugLog('Stopping simulator...');
+
+        // First, stop the local flush timer to prevent buffered data from showing
+        if (state.flushTimer) {
+            clearInterval(state.flushTimer);
+            state.flushTimer = null;
+        }
+
+        // Clear any remaining buffer
+        state.incomingBuffer = [];
+
+        const res = await fetch(`${API_BASE}/admin/simulator/stop`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        // Wait a moment for the server to fully stop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        state.isSimulatorRunning = false;
+        if (startBtn) startBtn.disabled = false;
+        if (stopBtn) stopBtn.disabled = true;
+
+        const statusEl = document.getElementById('dash-sim-status');
+        if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+
+        toast('Simulator stopped successfully');
+        debugLog('Simulator stopped successfully');
+
+    } catch (e) {
+        debugLog('Failed to stop simulator (server err): ' + (e.message||e));
+
+        // IMPORTANT: Still stop local processing even if server call fails
+        if (state.flushTimer) {
+            clearInterval(state.flushTimer);
+            state.flushTimer = null;
+        }
+        state.incomingBuffer = [];
+        state.isSimulatorRunning = false;
+
+        if (startBtn) startBtn.disabled = false;
+        if (stopBtn) stopBtn.disabled = true;
+
+        const statusEl = document.getElementById('dash-sim-status');
+        if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped (local)</strong>';
+
+        toast('Simulator stopped (local fallback)');
+    }
+}
+</script>
+</body>
+</html>

@@ -967,900 +967,911 @@
 <div id="toast" class="fixed bottom-6 right-6 opacity-0 transition-all duration-300 transform translate-y-2"></div>
 
 <script>
-    /* ---------------- Config & state ---------------- */
-    const API_BASE = 'http://localhost:8083';
-    const WEBSOCKET_URL = `${API_BASE}/ws-sensor-data`;
+    /* ---------------- Config ---------------- */
+  const API_BASE = ""; // same origin (Spring Boot serves frontend + backend)
+  const WEBSOCKET_URL =
+    (window.location.protocol === "https:" ? "wss://" : "ws://") +
+    window.location.host +
+    "/ws-sensor-data";
 
-    // tweak these to tune performance / responsiveness
-    const FLUSH_INTERVAL_MS = 500;    // flush incoming buffer to UI every X ms
-    const MAX_LIVE_FEED = 200;       // keep at most this many DOM entries in live feed
-    const MAX_DEBUG_LINES = 200;     // debug log cap
-    const MAX_CHART_POINTS = 200;    // points per dataset
+  console.log("[DEBUG] API_BASE =", API_BASE);
+  console.log("[DEBUG] WEBSOCKET_URL =", WEBSOCKET_URL);
 
-    const state = {
-      devices: new Map(),
-      sensorData: new Map(),
-      stompClient: null,
-      chart: null,
-      totalReadings: 0,
-      anomalies: 0,
-      nextSensorId: 1,
-      isSimulatorRunning: false,
-      incomingBuffer: [],   // buffer of incoming readings
-      flushTimer: null,
-      debugLines: []        // keep last debug lines
-    };
 
-    /* ---------------- Utilities ---------------- */
-    const debugLogEl = document.getElementById('debug-log');
-    function debugLog(msg) {
-      const ts = dayjs().format('HH:mm:ss.SSS');
-      const line = `[${ts}] ${msg}`;
-      // keep array capped
-      state.debugLines.push(line);
-      if (state.debugLines.length > MAX_DEBUG_LINES) state.debugLines.shift();
-      // append to DOM incrementally (avoid re-rendering entire log)
-      if (debugLogEl) {
-        const div = document.createElement('div');
-        div.textContent = line;
-        div.className = 'text-green-400';
-        debugLogEl.appendChild(div);
-        // remove oldest DOM child if over cap
-        while (debugLogEl.children.length > MAX_DEBUG_LINES) debugLogEl.removeChild(debugLogEl.firstChild);
-        debugLogEl.scrollTop = debugLogEl.scrollHeight;
-      } else {
-        console.log(line);
-      }
-    }
+          // tweak these to tune performance / responsiveness
+          const FLUSH_INTERVAL_MS = 500;    // flush incoming buffer to UI every X ms
+          const MAX_LIVE_FEED = 200;       // keep at most this many DOM entries in live feed
+          const MAX_DEBUG_LINES = 200;     // debug log cap
+          const MAX_CHART_POINTS = 200;    // points per dataset
 
-    function toast(message, isError=false, duration=4000) {
-      const t = document.getElementById('toast');
-      t.textContent = message;
-      t.className = `fixed bottom-6 right-6 px-6 py-3 rounded-xl shadow-lg font-medium transform transition-all duration-300 ${
-        isError ? 'bg-red-500 text-white' : 'bg-white text-gray-800 border border-gray-200'
-      }`;
-      t.style.opacity = '1';
-      t.style.transform = 'translateY(0)';
-      setTimeout(()=> {
-        t.style.opacity='0';
-        t.style.transform='translateY(8px)';
-      }, duration);
-    }
+          const state = {
+            devices: new Map(),
+            sensorData: new Map(),
+            stompClient: null,
+            chart: null,
+            totalReadings: 0,
+            anomalies: 0,
+            nextSensorId: 1,
+            isSimulatorRunning: false,
+            incomingBuffer: [],   // buffer of incoming readings
+            flushTimer: null,
+            debugLines: []        // keep last debug lines
+          };
 
-    /* ---------------- Modal Management ---------------- */
-    const openModal = (modalId, title) => {
-        const modal = document.getElementById(modalId);
-        const heading = modal.querySelector('h3');
-        if (heading) heading.textContent = title;
-        modal.classList.remove('hidden');
-        return modal;
-    };
-    const closeModal = (modalId) => document.getElementById(modalId).classList.add('hidden');
-
-    const openDeviceModal = (device = null) => {
-        openModal('device-modal', device ? 'Edit Device Configuration' : 'Add New IoT Device');
-        document.getElementById('device-id-field').value = device ? (device.deviceId ?? device.id ?? '') : '';
-        document.getElementById('device-name').value = device ? (device.deviceName ?? device.name ?? '') : '';
-        document.getElementById('device-type').value = device ? (device.deviceType ?? device.type ?? '') : '';
-        document.getElementById('device-location').value = device ? (device.location ?? '') : '';
-        document.getElementById('device-status').value = device ? (device.status ?? 'ACTIVE') : 'ACTIVE';
-    };
-
-    const openSensorModal = (sensorData = null) => {
-        openModal('sensor-modal', sensorData ? `Edit Sensor Reading #${sensorData.id}` : 'Add New Sensor Reading');
-        document.getElementById('sensor-id-field').value = sensorData ? sensorData.id : '';
-        document.getElementById('sensor-device-id').value = sensorData ? sensorData.deviceId : '';
-        document.getElementById('sensor-type').value = sensorData ? sensorData.sensorType : 'TEMPERATURE';
-        document.getElementById('sensor-value').value = sensorData ? sensorData.value : '';
-        document.getElementById('sensor-anomaly').value = sensorData ? String(sensorData.anomaly) : 'false';
-        document.getElementById('sensor-device-id').disabled = !!sensorData;
-        document.getElementById('sensor-type').disabled = !!sensorData;
-    };
-
-    /* ---------------- Enhanced Renderers ---------------- */
-    function renderDevicesTable() {
-      const tb = document.getElementById('devices-table');
-      tb.innerHTML = '';
-      if (state.devices.size === 0) {
-        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="6">
-          <div class="flex flex-col items-center space-y-2">
-            <span class="text-4xl">🔌</span>
-            <span>No devices registered yet</span>
-            <span class="text-xs">Add your first IoT device to start monitoring</span>
-          </div>
-        </td></tr>`;
-        document.getElementById('active-devices-count').textContent = 0;
-        return;
-      }
-      const list = Array.from(state.devices.values()).sort((a,b)=>{
-        const aId = Number(a.deviceId ?? a.id ?? 0);
-        const bId = Number(b.deviceId ?? b.id ?? 0);
-        return aId - bId;
-      });
-      const frag = document.createDocumentFragment();
-      list.forEach(d => {
-        const id = d.deviceId ?? d.id;
-        const name = d.deviceName ?? d.name ?? '—';
-        const type = d.deviceType ?? d.type ?? '—';
-        const location = d.location ?? '—';
-        const status = (d.status ?? 'ACTIVE').toString();
-        const statusClass = status.toLowerCase();
-        const statusIcon = status === 'ACTIVE' ? '🟢' : status === 'INACTIVE' ? '🟡' : '🔴';
-
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-sm">#${id}</td>
-          <td class="p-4 font-medium">${name}</td>
-          <td class="p-4"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg text-xs font-medium">${type}</span></td>
-          <td class="p-4 text-gray-600">${location}</td>
-          <td class="p-4">
-            <div class="flex items-center space-x-2">
-              <span>${statusIcon}</span>
-              <span class="font-medium">${status}</span>
-            </div>
-          </td>
-          <td class="p-4">
-            <div class="flex space-x-2">
-              <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editDevice(${id})">✏️ Edit</button>
-              <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteDevice(${id})">🗑️ Delete</button>
-            </div>
-          </td>`;
-        frag.appendChild(tr);
-      });
-      tb.appendChild(frag);
-      const activeCount = list.filter(d => (d.status ?? 'ACTIVE') === 'ACTIVE').length;
-      document.getElementById('active-devices-count').textContent = activeCount;
-    }
-
-    function renderSensorDataTable() {
-      const tb = document.getElementById('sensor-data-table');
-      const filter = document.getElementById('sensor-type-filter').value;
-      tb.innerHTML = '';
-      const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp));
-      const filtered = all.filter(x => filter === 'ALL' || x.sensorType === filter).slice(0, 10);
-      if (filtered.length === 0) {
-        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="5">
-          <div class="flex flex-col items-center space-y-2">
-            <span class="text-4xl">📊</span>
-            <span>No sensor data available</span>
-            <span class="text-xs">Start the simulator or add manual readings to see data</span>
-          </div>
-        </td></tr>`;
-        return;
-      }
-      const frag = document.createDocumentFragment();
-      filtered.forEach(d => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
-        const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
-                          d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
-          <td class="p-4">
-            <div class="flex items-center space-x-2">
-              <span>${sensorIcon}</span>
-              <span class="font-medium">${d.sensorType}</span>
-            </div>
-          </td>
-          <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
-          <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('HH:mm:ss')}</td>
-          <td class="p-4">
-            ${d.anomaly ?
-              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
-              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
-          </td>`;
-        frag.appendChild(tr);
-      });
-      tb.appendChild(frag);
-    }
-
-    function renderAllSensorDataTable() {
-      const tb = document.getElementById('all-sensors-table');
-      if (!tb) return;
-      tb.innerHTML = '';
-      const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 200);
-      if (all.length === 0) {
-        tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="7">
-          <div class="flex flex-col items-center space-y-2">
-            <span class="text-4xl">📈</span>
-            <span>No sensor readings in database</span>
-            <span class="text-xs">Sensor data will appear here as it's collected</span>
-          </div>
-        </td></tr>`;
-        return;
-      }
-      const frag = document.createDocumentFragment();
-      all.forEach(d => {
-        const tr = document.createElement('tr');
-        tr.className = 'hover:bg-gray-50 transition-colors duration-200';
-        const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
-                          d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
-        tr.innerHTML = `
-          <td class="p-4 font-mono text-sm">#${d.id}</td>
-          <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
-          <td class="p-4">
-            <div class="flex items-center space-x-2">
-              <span>${sensorIcon}</span>
-              <span class="font-medium">${d.sensorType}</span>
-            </div>
-          </td>
-          <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
-          <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
-          <td class="p-4">
-            ${d.anomaly ?
-              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
-              '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
-          </td>
-          <td class="p-4">
-            <div class="flex space-x-2">
-              <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editSensorData(${d.id})">✏️ Edit</button>
-              <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteSensorData(${d.id})">🗑️ Delete</button>
-            </div>
-          </td>`;
-        frag.appendChild(tr);
-      });
-      tb.appendChild(frag);
-    }
-
-    /* ---------------- Chart (canvas removed from DOM — defensive) ---------------- */
-    const sensorCanvas = document.getElementById('sensorChart'); // intentionally null (chart removed)
-    const ctx = sensorCanvas ? sensorCanvas.getContext('2d') : null;
-
-    function initChart() {
-      try {
-        if (!ctx) return; // chart intentionally removed — no-op
-        state.chart = new Chart(ctx, {
-          type:'line',
-          data:{datasets:[{label:'Temperature (°C)', data:[], borderColor:'rgb(59,130,246)', tension:0.3, fill:true}]},
-          options:{scales:{x:{type:'time',time:{unit:'second',displayFormats:{second:'HH:mm:ss'}}}, y:{title:{text:'°C'}}}, animation:{duration:200}}
-        });
-      } catch(e){ debugLog('Chart init err: '+(e.message||e)); }
-    }
-    function batchPushChartPoints(points) {
-      if (!state.chart || !points || points.length === 0) return;
-      const ds = state.chart.data.datasets[0];
-      for (const p of points) ds.data.push(p);
-      if (ds.data.length > MAX_CHART_POINTS) ds.data.splice(0, ds.data.length - MAX_CHART_POINTS);
-      state.chart.update('none');
-    }
-
-    function updateChart(reading) {
-      try {
-        if (!reading || !state.chart) return;
-        if (reading.sensorType === 'TEMPERATURE') {
-          const pt = { x: new Date(reading.timestamp || new Date()), y: parseFloat(reading.value) };
-          batchPushChartPoints([pt]);
-        }
-      } catch (e) { debugLog('updateChart err: ' + (e.message||e)); }
-    }
-
-    /* ---------------- Enhanced Live feed (batched) ---------------- */
-    function batchAddLiveFeedEntries(entries) {
-      if (!entries || entries.length === 0) return;
-      const feed = document.getElementById('live-feed');
-      if (!feed) return;
-      const frag = document.createDocumentFragment();
-      entries.forEach(reading => {
-        const entry = document.createElement('div');
-        entry.className = 'feed-entry' + (reading.anomaly ? ' anomaly' : '');
-        const ts = reading.timestamp ? dayjs(reading.timestamp).format('YYYY-MM-DD HH:mm:ss') : dayjs().format('YYYY-MM-DD HH:mm:ss');
-
-        if (reading.raw) {
-          entry.innerHTML = `<div class="bg-gray-800 text-green-400 p-3 rounded-lg font-mono text-xs"><pre>${reading.raw}</pre></div>`;
-          entry.classList.add('flash-green');
-        } else {
-          const sensorIcon = reading.sensorType === 'TEMPERATURE' ? '🌡️' :
-                            reading.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
-          const deviceName = reading.deviceName ?? `Device #${reading.deviceId}`;
-          const imageHtml = reading.imageUrl ? `<div style="margin-top:.75rem"><img src="${reading.imageUrl}" alt="img" style="max-width:100%;max-height:120px;border-radius:8px;border:2px solid #e5e7eb" /></div>` : '';
-
-          entry.innerHTML = `
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center space-x-3">
-                <span class="text-lg">${sensorIcon}</span>
-                <div>
-                  <div class="font-semibold text-gray-800">${deviceName}</div>
-                  <div class="text-xs text-gray-500">${reading.sensorType} Sensor</div>
-                </div>
-              </div>
-              <div class="text-right">
-                <div class="text-xl font-bold text-gray-800">${reading.value} ${reading.unit ?? ''}</div>
-                ${reading.anomaly ? '<span class="text-xs text-red-600 font-medium">⚠️ ANOMALY</span>' : '<span class="text-xs text-green-600 font-medium">✅ NORMAL</span>'}
-              </div>
-            </div>
-            <div class="small flex justify-between">
-              <span>${ts}</span>
-            </div>
-            ${imageHtml}`;
-          entry.classList.add(reading.anomaly ? 'flash-red' : 'flash-green');
-        }
-        frag.prepend ? frag.prepend(entry) : frag.appendChild(entry);
-      });
-
-      const nodes = Array.from(frag.childNodes);
-      nodes.reverse().forEach(n => feed.prepend(n));
-      while (feed.children.length > MAX_LIVE_FEED) feed.removeChild(feed.lastChild);
-
-      setTimeout(()=> {
-        const removes = feed.querySelectorAll('.flash-green, .flash-red');
-        removes.forEach(el => el.classList.remove('flash-green','flash-red'));
-      }, 1200);
-    }
-
-    /* ---------------- CRUD Operations (devices) ---------------- */
-    async function loadDevices(){
-      try {
-        const res = await fetch(`${API_BASE}/device/detail`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const arr = await res.json();
-        state.devices.clear();
-        arr.forEach(d => {
-          const id = Number(d.deviceId ?? d.id);
-          state.devices.set(id, {...d, deviceId: id});
-        });
-        renderDevicesTable();
-      } catch (e) {
-        debugLog('Failed loadDevices (detail): '+(e.message||e));
-        try {
-          const res2 = await fetch(`${API_BASE}/device`);
-          if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
-          const arr2 = await res2.json();
-          state.devices.clear();
-          arr2.forEach((d, idx) => {
-            const id = Number(d.deviceId ?? d.id ?? (idx+1));
-            state.devices.set(id, {...d, deviceId:id});
-          });
-          renderDevicesTable();
-        } catch (err2) {
-          debugLog('Fallback loadDevices failed: '+(err2.message||err2));
-          toast('Failed to load devices', true);
-          renderDevicesTable();
-        }
-      }
-    }
-
-    async function deleteDevice(id){
-      if (!confirm(`Delete device ${id}?`)) return;
-      try {
-        const res = await fetch(`${API_BASE}/device/${id}`, { method:'DELETE' });
-        if (res.ok || res.status === 204) {
-          toast('Device deleted successfully');
-          state.devices.delete(Number(id));
-          renderDevicesTable();
-          return;
-        } else {
-          throw new Error(`HTTP ${res.status}`);
-        }
-      } catch (e) {
-        debugLog('deleteDevice err: '+(e.message||e));
-        state.devices.delete(Number(id));
-        renderDevicesTable();
-        toast('Device deleted (local)');
-      }
-    }
-
-    window.editDevice = function(id) {
-        const device = state.devices.get(Number(id));
-        if (device) openDeviceModal(device);
-    };
-
-    window.deleteDevice = deleteDevice;
-
-    const onDeviceFormSubmit = async (e) => {
-        e.preventDefault();
-        const idRaw = document.getElementById('device-id-field').value;
-        const id = idRaw ? Number(idRaw) : null;
-        const payload = {
-            deviceName: document.getElementById('device-name').value,
-            deviceType: document.getElementById('device-type').value
-        };
-        const status = document.getElementById('device-status').value;
-        const location = document.getElementById('device-location').value;
-
-        if (id) {
-            try {
-                const res = await fetch(`${API_BASE}/device/${id}`, {
-                    method: 'PUT',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({...payload, status})
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const existing = state.devices.get(id) || {};
-                state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
-                toast('Device updated successfully');
-            } catch (e) {
-                debugLog('Failed to update device via API: '+(e.message||e));
-                const existing = state.devices.get(id) || {};
-                state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
-                toast('Device updated (local)');
+          /* ---------------- Utilities ---------------- */
+          const debugLogEl = document.getElementById('debug-log');
+          function debugLog(msg) {
+            const ts = dayjs().format('HH:mm:ss.SSS');
+            const line = `[${ts}] ${msg}`;
+            // keep array capped
+            state.debugLines.push(line);
+            if (state.debugLines.length > MAX_DEBUG_LINES) state.debugLines.shift();
+            // append to DOM incrementally (avoid re-rendering entire log)
+            if (debugLogEl) {
+              const div = document.createElement('div');
+              div.textContent = line;
+              div.className = 'text-green-400';
+              debugLogEl.appendChild(div);
+              // remove oldest DOM child if over cap
+              while (debugLogEl.children.length > MAX_DEBUG_LINES) debugLogEl.removeChild(debugLogEl.firstChild);
+              debugLogEl.scrollTop = debugLogEl.scrollHeight;
+            } else {
+              console.log(line);
             }
-        } else {
-            try {
-                const res = await fetch(`${API_BASE}/device`, {
-                    method: 'POST',
-                    headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const created = await res.json();
-                const newId = Number(created.deviceId ?? created.id ?? (Math.max(0, ...Array.from(state.devices.keys())) + 1));
-                const deviceObj = {
-                  deviceId: newId,
-                  ...created,
-                  deviceName: created.deviceName ?? payload.deviceName,
-                  deviceType: created.deviceType ?? payload.deviceType,
-                  registeredAt: created.registeredAt ?? new Date().toISOString(),
-                  status: created.status ?? 'ACTIVE',
-                  location
-                };
-                state.devices.set(newId, deviceObj);
-                toast('Device created successfully');
-            } catch (e) {
-                debugLog('Failed to create device via API: '+(e.message||e));
-                const newId = Math.max(0, ...Array.from(state.devices.keys())) + 1;
-                state.devices.set(newId, {
-                    id: newId, deviceId: newId,
-                    deviceName: payload.deviceName, deviceType: payload.deviceType,
-                    status: status || 'ACTIVE', location,
-                    registeredAt: new Date().toISOString()
-                });
-                toast('Device created (local)');
-            }
-        }
-
-        renderDevicesTable();
-        closeModal('device-modal');
-    };
-
-    /* ---------------- Sensors CRUD ---------------- */
-    async function loadSensors(){
-      try {
-        const res = await fetch(`${API_BASE}/sensor`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const arr = await res.json();
-        state.sensorData.clear();
-        arr.slice(-200).forEach(s => {
-          const id = s.id ?? (s.sensorId ?? state.nextSensorId++);
-          s.id = id;
-          state.sensorData.set(id, s);
-          state.nextSensorId = Math.max(state.nextSensorId, id+1);
-        });
-        renderSensorDataTable();
-        renderAllSensorDataTable();
-      } catch (e) {
-        debugLog('loadSensors err: '+(e.message||e));
-        toast('Failed to load sensors', true);
-      }
-    }
-
-    async function deleteSensorData(id){
-      if (!confirm(`Delete sensor record ${id}?`)) return;
-      try {
-        const res = await fetch(`${API_BASE}/sensor/${id}`, { method:'DELETE' });
-        if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-        const reading = state.sensorData.get(id);
-        if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
-        state.sensorData.delete(id);
-        state.totalReadings = Math.max(0, state.totalReadings - 1);
-        document.getElementById('total-readings-count').textContent = state.totalReadings;
-        document.getElementById('anomalies-count').textContent = state.anomalies;
-        renderAllSensorDataTable();
-        renderSensorDataTable();
-        toast('Sensor record deleted');
-      } catch (e) {
-        debugLog('deleteSensorData err: '+(e.message||e));
-        const reading = state.sensorData.get(id);
-        if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
-        state.sensorData.delete(id);
-        state.totalReadings = Math.max(0, state.totalReadings - 1);
-        document.getElementById('total-readings-count').textContent = state.totalReadings;
-        document.getElementById('anomalies-count').textContent = state.anomalies;
-        renderAllSensorDataTable();
-        renderSensorDataTable();
-        toast('Sensor record deleted (local)');
-      }
-    }
-
-    window.editSensorData = function(id) {
-        const sensor = state.sensorData.get(id);
-        if (sensor) openSensorModal(sensor);
-    };
-
-    window.deleteSensorData = deleteSensorData;
-
-    const onSensorFormSubmit = (e) => {
-        e.preventDefault();
-        const idRaw = document.getElementById('sensor-id-field').value;
-        const id = idRaw ? parseInt(idRaw) : null;
-        const sensorData = {
-            deviceId: parseInt(document.getElementById('sensor-device-id').value),
-            sensorType: document.getElementById('sensor-type').value,
-            value: parseFloat(document.getElementById('sensor-value').value),
-            anomaly: document.getElementById('sensor-anomaly').value === 'true',
-            timestamp: new Date().toISOString()
-        };
-
-        if (id) {
-            debugLog(`Updating sensor reading ${id}`);
-            const existing = state.sensorData.get(id);
-            state.sensorData.set(id, { ...existing, ...sensorData, id });
-            toast('Sensor reading updated');
-        } else {
-            debugLog(`Creating new sensor reading`);
-            const newId = state.nextSensorId++;
-            state.sensorData.set(newId, {
-                id: newId,
-                ...sensorData
-            });
-            state.totalReadings++;
-            if (sensorData.anomaly) state.anomalies++;
-
-            document.getElementById('total-readings-count').textContent = state.totalReadings;
-            document.getElementById('anomalies-count').textContent = state.anomalies;
-
-            // small immediate UI update
-            updateChart(sensorData);
-            batchAddLiveFeedEntries([sensorData]);
-            toast('Sensor reading created');
-        }
-
-        renderSensorDataTable();
-        renderAllSensorDataTable();
-        closeModal('sensor-modal');
-    };
-
-
-/* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
-function updateWsStatus(connected) {
-    const dot = document.getElementById('ws-status-dot');
-    const text = document.getElementById('ws-status-text');
-    const connectionStatus = document.getElementById('connection-status');
-
-    if (!dot || !text) return;
-    if (connected) {
-        dot.className = 'status-dot status-active';
-        text.textContent = 'Connected';
-        if (connectionStatus) connectionStatus.textContent = 'Connected';
-        if (connectionStatus) connectionStatus.className = 'font-medium text-green-600';
-    } else {
-        dot.className = 'status-dot status-error';
-        text.textContent = 'Disconnected';
-        if (connectionStatus) connectionStatus.textContent = 'Disconnected';
-        if (connectionStatus) connectionStatus.className = 'font-medium text-red-600';
-    }
-}
-
-function startFlushTimerIfNeeded() {
-  if (state.flushTimer) return;
-  state.flushTimer = setInterval(flushIncomingBuffer, FLUSH_INTERVAL_MS);
-}
-
-function stopFlushTimerIfEmpty() {
-  if (state.flushTimer && state.incomingBuffer.length === 0) {
-    clearInterval(state.flushTimer);
-    state.flushTimer = null;
-  }
-}
-
-function flushIncomingBuffer() {
-  const buf = state.incomingBuffer.splice(0, 1000); // take at most 1000 per flush
-  if (!buf || buf.length === 0) {
-    stopFlushTimerIfEmpty();
-    return;
-  }
-
-  // process buffered readings in batch
-  const chartPoints = [];
-  const feedEntries = [];
-  let anomaliesDelta = 0;
-  buf.forEach(reading => {
-    // ensure id and timestamp
-    const id = reading.id ?? state.nextSensorId++;
-    reading.id = id;
-    if (!reading.timestamp) reading.timestamp = new Date().toISOString();
-    state.sensorData.set(id, reading);
-    state.totalReadings++;
-    if (reading.anomaly) anomaliesDelta++;
-
-    // chart point if temperature
-    if (reading.sensorType === 'TEMPERATURE') {
-      chartPoints.push({x: new Date(reading.timestamp), y: parseFloat(reading.value)});
-    }
-
-    feedEntries.push(reading);
-  });
-
-  state.anomalies += anomaliesDelta;
-  // update counters once
-  document.getElementById('total-readings-count').textContent = state.totalReadings;
-  document.getElementById('anomalies-count').textContent = state.anomalies;
-
-  // batch update chart and feed
-  if (chartPoints.length) batchPushChartPoints(chartPoints);
-  batchAddLiveFeedEntries(feedEntries);
-
-  // update tables
-  renderSensorDataTable();
-  renderAllSensorDataTable();
-}
-
-/* ---------------- Reliable Simulator Control + STOMP subscription ---------------- */
-
-// robust API base (fallback to local simulator host if API_BASE not set)
-const SIM_API_BASE = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE.replace(/\/$/, '') : 'http://localhost:8083';
-console.log('[DEBUG] SIM_API_BASE =', SIM_API_BASE);
-
-// candidate status endpoints (tried in order)
-const STATUS_ENDPOINT_CANDIDATES = [
-  `${SIM_API_BASE}/simulator/status`,
-  `${SIM_API_BASE}/status`,
-  `${SIM_API_BASE}/api/simulator/status`
-];
-
-// candidate start endpoints (tried in order)
-const START_ENDPOINT_CANDIDATES = [
-  `${SIM_API_BASE}/simulator/startAll`,
-  `${SIM_API_BASE}/api/simulator/start`,
-  `${SIM_API_BASE}/api/simulator/startAll`,
-  `${SIM_API_BASE}/simulator/start`
-];
-
-// candidate stop endpoints (tried in order)
-const STOP_ENDPOINT_CANDIDATES = [
-  `${SIM_API_BASE}/simulator/stopAll`,
-  `${SIM_API_BASE}/api/simulator/stop`,
-  `${SIM_API_BASE}/api/simulator/stopAll`,
-  `${SIM_API_BASE}/simulator/stop`
-];
-
-// helper: probe status endpoint candidates and return {json, url} or throw
-async function probeStatusEndpoint() {
-  let lastErr = null;
-  for (const url of STATUS_ENDPOINT_CANDIDATES) {
-    try {
-      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
-      if (!res.ok) {
-        lastErr = new Error(`HTTP ${res.status} from ${url}`);
-        continue;
-      }
-      const json = await res.json();
-      console.log('[DEBUG] status fetched from', url, json);
-      return { json, url };
-    } catch (e) {
-      lastErr = e;
-      console.warn('[DEBUG] status probe failed for', url, e);
-    }
-  }
-  throw lastErr || new Error('No status endpoint succeeded');
-}
-
-// core: sync UI with server status
-async function syncSimulatorStatus() {
-  try {
-    const { json } = await probeStatusEndpoint();
-    // support legacy { running } and modern { isRunning }
-    const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
-                       : (typeof json.running !== 'undefined') ? Boolean(json.running)
-                       : false;
-    const runningDeviceIds = json.runningDeviceIds || json.runningDevices || json.running || [];
-
-    state.isSimulatorRunning = isRunning;
-    const startBtn = document.getElementById('start-sim-btn');
-    const stopBtn = document.getElementById('stop-sim-btn');
-    const statusEl = document.getElementById('dash-sim-status');
-
-    if (isRunning) {
-      if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
-      if (startBtn) startBtn.disabled = true;
-      if (stopBtn) stopBtn.disabled = false;
-    } else {
-      if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
-      if (startBtn) startBtn.disabled = false;
-      if (stopBtn) stopBtn.disabled = true;
-    }
-
-    debugLog('syncSimulatorStatus -> isRunning=' + isRunning + ' devices=' + (runningDeviceIds || []).join(', '));
-    return { isRunning, runningDeviceIds };
-  } catch (e) {
-    console.error('[DEBUG] syncSimulatorStatus failed', e);
-    // keep UI conservative (don't flip buttons aggressively)
-    return { isRunning: state.isSimulatorRunning, runningDeviceIds: [] };
-  }
-}
-
-// helper to call first-success endpoint from a candidates list
-async function callFirstSuccess(urls, options = {}) {
-  let lastErr = null;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) {
-        console.log('[DEBUG] callFirstSuccess ok ->', url, res.status);
-        return { res, url };
-      } else {
-        console.warn('[DEBUG] callFirstSuccess non-ok ->', url, res.status);
-        lastErr = new Error(`HTTP ${res.status} from ${url}`);
-      }
-    } catch (e) {
-      console.warn('[DEBUG] callFirstSuccess failed ->', url, e);
-      lastErr = e;
-    }
-  }
-  throw lastErr || new Error('All calls failed');
-}
-
-// After start/stop, poll status endpoint up to N times to confirm server state (helps with race)
-async function waitForStatusConfirm(desiredRunning, maxTries = 8, intervalMs = 400) {
-  for (let i = 0; i < maxTries; i++) {
-    try {
-      const { json } = await probeStatusEndpoint();
-      const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
-                         : (typeof json.running !== 'undefined') ? Boolean(json.running) : false;
-      if (isRunning === desiredRunning) {
-        // update UI once confirmed
-        await syncSimulatorStatus();
-        return true;
-      }
-    } catch (e) {
-      // ignore and retry
-    }
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-  // final attempt to sync UI anyway
-  await syncSimulatorStatus();
-  return false;
-}
-
-// Start simulator (robust, idempotent)
-async function startSimulator() {
-  const startBtn = document.getElementById('start-sim-btn');
-  const stopBtn = document.getElementById('stop-sim-btn');
-  const statusEl = document.getElementById('dash-sim-status');
-
-  if (startBtn) startBtn.disabled = true;
-  if (stopBtn) stopBtn.disabled = true;
-
-  try {
-    debugLog('Starting simulator (robust)...');
-    await callFirstSuccess(START_ENDPOINT_CANDIDATES, { method: 'POST' });
-
-    // optimistic UI while waiting for server confirm
-    state.isSimulatorRunning = true;
-    if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
-    if (startBtn) startBtn.disabled = true;
-    if (stopBtn) stopBtn.disabled = false;
-
-    // confirm server state (poll)
-    const confirmed = await waitForStatusConfirm(true);
-    if (!confirmed) {
-      toast('Started request sent but server did not confirm; check logs', true);
-    } else {
-      toast('Simulator started successfully');
-    }
-    debugLog('Start sequence finished, confirmed=' + confirmed);
-  } catch (e) {
-    debugLog('Failed to start simulator: ' + (e.message || e));
-    toast('Failed to start simulator', true);
-    // restore conservative state by re-syncing
-    await syncSimulatorStatus();
-  } finally {
-    if (startBtn && !state.isSimulatorRunning) startBtn.disabled = false;
-  }
-}
-
-// Stop simulator (robust, idempotent)
-async function stopSimulator() {
-  const startBtn = document.getElementById('start-sim-btn');
-  const stopBtn = document.getElementById('stop-sim-btn');
-  const statusEl = document.getElementById('dash-sim-status');
-
-  if (startBtn) startBtn.disabled = true;
-  if (stopBtn) stopBtn.disabled = true;
-
-  try {
-    debugLog('Stopping simulator (robust)...');
-    await callFirstSuccess(STOP_ENDPOINT_CANDIDATES, { method: 'POST' });
-
-    // optimistic UI
-    state.isSimulatorRunning = false;
-    if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn) stopBtn.disabled = true;
-
-    // confirm server state
-    const confirmed = await waitForStatusConfirm(false);
-    if (!confirmed) {
-      toast('Stop request sent but server did not confirm; check logs', true);
-    } else {
-      toast('Simulator stopped successfully');
-    }
-    debugLog('Stop sequence finished, confirmed=' + confirmed);
-  } catch (e) {
-    debugLog('Failed to stop simulator: ' + (e.message || e));
-    toast('Failed to stop simulator', true);
-    // restore conservative state
-    await syncSimulatorStatus();
-  } finally {
-    if (stopBtn && state.isSimulatorRunning) stopBtn.disabled = false;
-  }
-}
-
-/* ---------------- STOMP subscription helpers ---------------- */
-
-// Single normalized handler for control messages
-function handleSimulatorControlMessage(body) {
-  const running = (typeof body.isRunning !== 'undefined') ? Boolean(body.isRunning)
-               : (typeof body.running !== 'undefined') ? Boolean(body.running)
-               : false;
-  const startBtn = document.getElementById('start-sim-btn');
-  const stopBtn = document.getElementById('stop-sim-btn');
-  const statusEl = document.getElementById('dash-sim-status');
-
-  state.isSimulatorRunning = running;
-  if (running) {
-    if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
-    if (startBtn) startBtn.disabled = true;
-    if (stopBtn) stopBtn.disabled = false;
-  } else {
-    if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
-    if (startBtn) startBtn.disabled = false;
-    if (stopBtn) stopBtn.disabled = true;
-  }
-  debugLog('handleSimulatorControlMessage -> running=' + running + ' body=' + JSON.stringify(body));
-}
-
-// Subscribe to multiple possible topics and normalize messages (call after STOMP connect)
-function subscribeSimulatorControl() {
-  try {
-    if (!state.stompClient || typeof state.stompClient.subscribe !== 'function') {
-      debugLog('subscribeSimulatorControl: stompClient not ready');
-      return;
-    }
-    // avoid double subs
-    if (state.__simControlSubs) {
-      debugLog('subscribeSimulatorControl: already subscribed');
-      return;
-    }
-    state.__simControlSubs = [];
-
-    const topics = ['/topic/simulator-control', '/topic/simulator-status', '/topic/sim-control'];
-    topics.forEach(topic => {
-      try {
-        const sub = state.stompClient.subscribe(topic, (message) => {
-          try {
-            console.log('[DEBUG] raw control msg from', topic, message);
-            const body = message && message.body ? JSON.parse(message.body) : message;
-            handleSimulatorControlMessage(body);
-          } catch (e) {
-            console.warn('[DEBUG] failed parse control msg from', topic, e);
           }
-        });
-        state.__simControlSubs.push({ topic, sub });
-        debugLog('Subscribed to ' + topic);
-      } catch (e) {
-        console.warn('subscribe failed for', topic, e);
+
+          function toast(message, isError=false, duration=4000) {
+            const t = document.getElementById('toast');
+            t.textContent = message;
+            t.className = `fixed bottom-6 right-6 px-6 py-3 rounded-xl shadow-lg font-medium transform transition-all duration-300 ${
+              isError ? 'bg-red-500 text-white' : 'bg-white text-gray-800 border border-gray-200'
+            }`;
+            t.style.opacity = '1';
+            t.style.transform = 'translateY(0)';
+            setTimeout(()=> {
+              t.style.opacity='0';
+              t.style.transform='translateY(8px)';
+            }, duration);
+          }
+
+          /* ---------------- Modal Management ---------------- */
+          const openModal = (modalId, title) => {
+              const modal = document.getElementById(modalId);
+              const heading = modal.querySelector('h3');
+              if (heading) heading.textContent = title;
+              modal.classList.remove('hidden');
+              return modal;
+          };
+          const closeModal = (modalId) => document.getElementById(modalId).classList.add('hidden');
+
+          const openDeviceModal = (device = null) => {
+              openModal('device-modal', device ? 'Edit Device Configuration' : 'Add New IoT Device');
+              document.getElementById('device-id-field').value = device ? (device.deviceId ?? device.id ?? '') : '';
+              document.getElementById('device-name').value = device ? (device.deviceName ?? device.name ?? '') : '';
+              document.getElementById('device-type').value = device ? (device.deviceType ?? device.type ?? '') : '';
+              document.getElementById('device-location').value = device ? (device.location ?? '') : '';
+              document.getElementById('device-status').value = device ? (device.status ?? 'ACTIVE') : 'ACTIVE';
+          };
+
+          const openSensorModal = (sensorData = null) => {
+              openModal('sensor-modal', sensorData ? `Edit Sensor Reading #${sensorData.id}` : 'Add New Sensor Reading');
+              document.getElementById('sensor-id-field').value = sensorData ? sensorData.id : '';
+              document.getElementById('sensor-device-id').value = sensorData ? sensorData.deviceId : '';
+              document.getElementById('sensor-type').value = sensorData ? sensorData.sensorType : 'TEMPERATURE';
+              document.getElementById('sensor-value').value = sensorData ? sensorData.value : '';
+              document.getElementById('sensor-anomaly').value = sensorData ? String(sensorData.anomaly) : 'false';
+              document.getElementById('sensor-device-id').disabled = !!sensorData;
+              document.getElementById('sensor-type').disabled = !!sensorData;
+          };
+
+          /* ---------------- Enhanced Renderers ---------------- */
+          function renderDevicesTable() {
+            const tb = document.getElementById('devices-table');
+            tb.innerHTML = '';
+            if (state.devices.size === 0) {
+              tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="6">
+                <div class="flex flex-col items-center space-y-2">
+                  <span class="text-4xl">🔌</span>
+                  <span>No devices registered yet</span>
+                  <span class="text-xs">Add your first IoT device to start monitoring</span>
+                </div>
+              </td></tr>`;
+              document.getElementById('active-devices-count').textContent = 0;
+              return;
+            }
+            const list = Array.from(state.devices.values()).sort((a,b)=>{
+              const aId = Number(a.deviceId ?? a.id ?? 0);
+              const bId = Number(b.deviceId ?? b.id ?? 0);
+              return aId - bId;
+            });
+            const frag = document.createDocumentFragment();
+            list.forEach(d => {
+              const id = d.deviceId ?? d.id;
+              const name = d.deviceName ?? d.name ?? '—';
+              const type = d.deviceType ?? d.type ?? '—';
+              const location = d.location ?? '—';
+              const status = (d.status ?? 'ACTIVE').toString();
+              const statusClass = status.toLowerCase();
+              const statusIcon = status === 'ACTIVE' ? '🟢' : status === 'INACTIVE' ? '🟡' : '🔴';
+
+              const tr = document.createElement('tr');
+              tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+              tr.innerHTML = `
+                <td class="p-4 font-mono text-sm">#${id}</td>
+                <td class="p-4 font-medium">${name}</td>
+                <td class="p-4"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg text-xs font-medium">${type}</span></td>
+                <td class="p-4 text-gray-600">${location}</td>
+                <td class="p-4">
+                  <div class="flex items-center space-x-2">
+                    <span>${statusIcon}</span>
+                    <span class="font-medium">${status}</span>
+                  </div>
+                </td>
+                <td class="p-4">
+                  <div class="flex space-x-2">
+                    <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editDevice(${id})">✏️ Edit</button>
+                    <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteDevice(${id})">🗑️ Delete</button>
+                  </div>
+                </td>`;
+              frag.appendChild(tr);
+            });
+            tb.appendChild(frag);
+            const activeCount = list.filter(d => (d.status ?? 'ACTIVE') === 'ACTIVE').length;
+            document.getElementById('active-devices-count').textContent = activeCount;
+          }
+
+          function renderSensorDataTable() {
+            const tb = document.getElementById('sensor-data-table');
+            const filter = document.getElementById('sensor-type-filter').value;
+            tb.innerHTML = '';
+            const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp));
+            const filtered = all.filter(x => filter === 'ALL' || x.sensorType === filter).slice(0, 10);
+            if (filtered.length === 0) {
+              tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="5">
+                <div class="flex flex-col items-center space-y-2">
+                  <span class="text-4xl">📊</span>
+                  <span>No sensor data available</span>
+                  <span class="text-xs">Start the simulator or add manual readings to see data</span>
+                </div>
+              </td></tr>`;
+              return;
+            }
+            const frag = document.createDocumentFragment();
+            filtered.forEach(d => {
+              const tr = document.createElement('tr');
+              tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+              const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
+                                d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+              tr.innerHTML = `
+                <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
+                <td class="p-4">
+                  <div class="flex items-center space-x-2">
+                    <span>${sensorIcon}</span>
+                    <span class="font-medium">${d.sensorType}</span>
+                  </div>
+                </td>
+                <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
+                <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('HH:mm:ss')}</td>
+                <td class="p-4">
+                  ${d.anomaly ?
+                    '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
+                    '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
+                </td>`;
+              frag.appendChild(tr);
+            });
+            tb.appendChild(frag);
+          }
+
+          function renderAllSensorDataTable() {
+            const tb = document.getElementById('all-sensors-table');
+            if (!tb) return;
+            tb.innerHTML = '';
+            const all = Array.from(state.sensorData.values()).sort((a,b)=> new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 200);
+            if (all.length === 0) {
+              tb.innerHTML = `<tr><td class="p-6 text-gray-500 text-center" colspan="7">
+                <div class="flex flex-col items-center space-y-2">
+                  <span class="text-4xl">📈</span>
+                  <span>No sensor readings in database</span>
+                  <span class="text-xs">Sensor data will appear here as it's collected</span>
+                </div>
+              </td></tr>`;
+              return;
+            }
+            const frag = document.createDocumentFragment();
+            all.forEach(d => {
+              const tr = document.createElement('tr');
+              tr.className = 'hover:bg-gray-50 transition-colors duration-200';
+              const sensorIcon = d.sensorType === 'TEMPERATURE' ? '🌡️' :
+                                d.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+              tr.innerHTML = `
+                <td class="p-4 font-mono text-sm">#${d.id}</td>
+                <td class="p-4 font-mono text-sm">#${d.deviceId ?? '-'}</td>
+                <td class="p-4">
+                  <div class="flex items-center space-x-2">
+                    <span>${sensorIcon}</span>
+                    <span class="font-medium">${d.sensorType}</span>
+                  </div>
+                </td>
+                <td class="p-4 font-bold">${Number(d.value).toFixed(2)}</td>
+                <td class="p-4 text-gray-600 text-sm">${dayjs(d.timestamp).format('YYYY-MM-DD HH:mm:ss')}</td>
+                <td class="p-4">
+                  ${d.anomaly ?
+                    '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">⚠️ Anomaly</span>' :
+                    '<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">✅ Normal</span>'}
+                </td>
+                <td class="p-4">
+                  <div class="flex space-x-2">
+                    <button class="text-blue-600 hover:text-blue-800 font-medium text-sm" onclick="editSensorData(${d.id})">✏️ Edit</button>
+                    <button class="text-red-600 hover:text-red-800 font-medium text-sm" onclick="deleteSensorData(${d.id})">🗑️ Delete</button>
+                  </div>
+                </td>`;
+              frag.appendChild(tr);
+            });
+            tb.appendChild(frag);
+          }
+
+          /* ---------------- Chart (canvas removed from DOM — defensive) ---------------- */
+          const sensorCanvas = document.getElementById('sensorChart'); // intentionally null (chart removed)
+          const ctx = sensorCanvas ? sensorCanvas.getContext('2d') : null;
+
+          function initChart() {
+            try {
+              if (!ctx) return; // chart intentionally removed — no-op
+              state.chart = new Chart(ctx, {
+                type:'line',
+                data:{datasets:[{label:'Temperature (°C)', data:[], borderColor:'rgb(59,130,246)', tension:0.3, fill:true}]},
+                options:{scales:{x:{type:'time',time:{unit:'second',displayFormats:{second:'HH:mm:ss'}}}, y:{title:{text:'°C'}}}, animation:{duration:200}}
+              });
+            } catch(e){ debugLog('Chart init err: '+(e.message||e)); }
+          }
+          function batchPushChartPoints(points) {
+            if (!state.chart || !points || points.length === 0) return;
+            const ds = state.chart.data.datasets[0];
+            for (const p of points) ds.data.push(p);
+            if (ds.data.length > MAX_CHART_POINTS) ds.data.splice(0, ds.data.length - MAX_CHART_POINTS);
+            state.chart.update('none');
+          }
+
+          function updateChart(reading) {
+            try {
+              if (!reading || !state.chart) return;
+              if (reading.sensorType === 'TEMPERATURE') {
+                const pt = { x: new Date(reading.timestamp || new Date()), y: parseFloat(reading.value) };
+                batchPushChartPoints([pt]);
+              }
+            } catch (e) { debugLog('updateChart err: ' + (e.message||e)); }
+          }
+
+          /* ---------------- Enhanced Live feed (batched) ---------------- */
+          function batchAddLiveFeedEntries(entries) {
+            if (!entries || entries.length === 0) return;
+            const feed = document.getElementById('live-feed');
+            if (!feed) return;
+            const frag = document.createDocumentFragment();
+            entries.forEach(reading => {
+              const entry = document.createElement('div');
+              entry.className = 'feed-entry' + (reading.anomaly ? ' anomaly' : '');
+              const ts = reading.timestamp ? dayjs(reading.timestamp).format('YYYY-MM-DD HH:mm:ss') : dayjs().format('YYYY-MM-DD HH:mm:ss');
+
+              if (reading.raw) {
+                entry.innerHTML = `<div class="bg-gray-800 text-green-400 p-3 rounded-lg font-mono text-xs"><pre>${reading.raw}</pre></div>`;
+                entry.classList.add('flash-green');
+              } else {
+                const sensorIcon = reading.sensorType === 'TEMPERATURE' ? '🌡️' :
+                                  reading.sensorType === 'HUMIDITY' ? '💧' : '🗜️';
+                const deviceName = reading.deviceName ?? `Device #${reading.deviceId}`;
+                const imageHtml = reading.imageUrl ? `<div style="margin-top:.75rem"><img src="${reading.imageUrl}" alt="img" style="max-width:100%;max-height:120px;border-radius:8px;border:2px solid #e5e7eb" /></div>` : '';
+
+                entry.innerHTML = `
+                  <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center space-x-3">
+                      <span class="text-lg">${sensorIcon}</span>
+                      <div>
+                        <div class="font-semibold text-gray-800">${deviceName}</div>
+                        <div class="text-xs text-gray-500">${reading.sensorType} Sensor</div>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-xl font-bold text-gray-800">${reading.value} ${reading.unit ?? ''}</div>
+                      ${reading.anomaly ? '<span class="text-xs text-red-600 font-medium">⚠️ ANOMALY</span>' : '<span class="text-xs text-green-600 font-medium">✅ NORMAL</span>'}
+                    </div>
+                  </div>
+                  <div class="small flex justify-between">
+                    <span>${ts}</span>
+                  </div>
+                  ${imageHtml}`;
+                entry.classList.add(reading.anomaly ? 'flash-red' : 'flash-green');
+              }
+              frag.prepend ? frag.prepend(entry) : frag.appendChild(entry);
+            });
+
+            const nodes = Array.from(frag.childNodes);
+            nodes.reverse().forEach(n => feed.prepend(n));
+            while (feed.children.length > MAX_LIVE_FEED) feed.removeChild(feed.lastChild);
+
+            setTimeout(()=> {
+              const removes = feed.querySelectorAll('.flash-green, .flash-red');
+              removes.forEach(el => el.classList.remove('flash-green','flash-red'));
+            }, 1200);
+          }
+
+          /* ---------------- CRUD Operations (devices) ---------------- */
+          async function loadDevices(){
+            try {
+              const res = await fetch(`${API_BASE}/device/detail`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const arr = await res.json();
+              state.devices.clear();
+              arr.forEach(d => {
+                const id = Number(d.deviceId ?? d.id);
+                state.devices.set(id, {...d, deviceId: id});
+              });
+              renderDevicesTable();
+            } catch (e) {
+              debugLog('Failed loadDevices (detail): '+(e.message||e));
+              try {
+                const res2 = await fetch(`${API_BASE}/device`);
+                if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+                const arr2 = await res2.json();
+                state.devices.clear();
+                arr2.forEach((d, idx) => {
+                  const id = Number(d.deviceId ?? d.id ?? (idx+1));
+                  state.devices.set(id, {...d, deviceId:id});
+                });
+                renderDevicesTable();
+              } catch (err2) {
+                debugLog('Fallback loadDevices failed: '+(err2.message||err2));
+                toast('Failed to load devices', true);
+                renderDevicesTable();
+              }
+            }
+          }
+
+          async function deleteDevice(id){
+            if (!confirm(`Delete device ${id}?`)) return;
+            try {
+              const res = await fetch(`${API_BASE}/device/${id}`, { method:'DELETE' });
+              if (res.ok || res.status === 204) {
+                toast('Device deleted successfully');
+                state.devices.delete(Number(id));
+                renderDevicesTable();
+                return;
+              } else {
+                throw new Error(`HTTP ${res.status}`);
+              }
+            } catch (e) {
+              debugLog('deleteDevice err: '+(e.message||e));
+              state.devices.delete(Number(id));
+              renderDevicesTable();
+              toast('Device deleted (local)');
+            }
+          }
+
+          window.editDevice = function(id) {
+              const device = state.devices.get(Number(id));
+              if (device) openDeviceModal(device);
+          };
+
+          window.deleteDevice = deleteDevice;
+
+          const onDeviceFormSubmit = async (e) => {
+              e.preventDefault();
+              const idRaw = document.getElementById('device-id-field').value;
+              const id = idRaw ? Number(idRaw) : null;
+              const payload = {
+                  deviceName: document.getElementById('device-name').value,
+                  deviceType: document.getElementById('device-type').value
+              };
+              const status = document.getElementById('device-status').value;
+              const location = document.getElementById('device-location').value;
+
+              if (id) {
+                  try {
+                      const res = await fetch(`${API_BASE}/device/${id}`, {
+                          method: 'PUT',
+                          headers: {'Content-Type':'application/json'},
+                          body: JSON.stringify({...payload, status})
+                      });
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                      const existing = state.devices.get(id) || {};
+                      state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
+                      toast('Device updated successfully');
+                  } catch (e) {
+                      debugLog('Failed to update device via API: '+(e.message||e));
+                      const existing = state.devices.get(id) || {};
+                      state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
+                      toast('Device updated (local)');
+                  }
+              } else {
+                  try {
+                      const res = await fetch(`${API_BASE}/device`, {
+                          method: 'POST',
+                          headers: {'Content-Type':'application/json'},
+                          body: JSON.stringify(payload)
+                      });
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                      const created = await res.json();
+                      const newId = Number(created.deviceId ?? created.id ?? (Math.max(0, ...Array.from(state.devices.keys())) + 1));
+                      const deviceObj = {
+                        deviceId: newId,
+                        ...created,
+                        deviceName: created.deviceName ?? payload.deviceName,
+                        deviceType: created.deviceType ?? payload.deviceType,
+                        registeredAt: created.registeredAt ?? new Date().toISOString(),
+                        status: created.status ?? 'ACTIVE',
+                        location
+                      };
+                      state.devices.set(newId, deviceObj);
+                      toast('Device created successfully');
+                  } catch (e) {
+                      debugLog('Failed to create device via API: '+(e.message||e));
+                      const newId = Math.max(0, ...Array.from(state.devices.keys())) + 1;
+                      state.devices.set(newId, {
+                          id: newId, deviceId: newId,
+                          deviceName: payload.deviceName, deviceType: payload.deviceType,
+                          status: status || 'ACTIVE', location,
+                          registeredAt: new Date().toISOString()
+                      });
+                      toast('Device created (local)');
+                  }
+              }
+
+              renderDevicesTable();
+              closeModal('device-modal');
+          };
+
+          /* ---------------- Sensors CRUD ---------------- */
+          async function loadSensors(){
+            try {
+              const res = await fetch(`${API_BASE}/sensor`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const arr = await res.json();
+              state.sensorData.clear();
+              arr.slice(-200).forEach(s => {
+                const id = s.id ?? (s.sensorId ?? state.nextSensorId++);
+                s.id = id;
+                state.sensorData.set(id, s);
+                state.nextSensorId = Math.max(state.nextSensorId, id+1);
+              });
+              renderSensorDataTable();
+              renderAllSensorDataTable();
+            } catch (e) {
+              debugLog('loadSensors err: '+(e.message||e));
+              toast('Failed to load sensors', true);
+            }
+          }
+
+          async function deleteSensorData(id){
+            if (!confirm(`Delete sensor record ${id}?`)) return;
+            try {
+              const res = await fetch(`${API_BASE}/sensor/${id}`, { method:'DELETE' });
+              if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+              const reading = state.sensorData.get(id);
+              if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
+              state.sensorData.delete(id);
+              state.totalReadings = Math.max(0, state.totalReadings - 1);
+              document.getElementById('total-readings-count').textContent = state.totalReadings;
+              document.getElementById('anomalies-count').textContent = state.anomalies;
+              renderAllSensorDataTable();
+              renderSensorDataTable();
+              toast('Sensor record deleted');
+            } catch (e) {
+              debugLog('deleteSensorData err: '+(e.message||e));
+              const reading = state.sensorData.get(id);
+              if (reading && reading.anomaly) state.anomalies = Math.max(0, state.anomalies - 1);
+              state.sensorData.delete(id);
+              state.totalReadings = Math.max(0, state.totalReadings - 1);
+              document.getElementById('total-readings-count').textContent = state.totalReadings;
+              document.getElementById('anomalies-count').textContent = state.anomalies;
+              renderAllSensorDataTable();
+              renderSensorDataTable();
+              toast('Sensor record deleted (local)');
+            }
+          }
+
+          window.editSensorData = function(id) {
+              const sensor = state.sensorData.get(id);
+              if (sensor) openSensorModal(sensor);
+          };
+
+          window.deleteSensorData = deleteSensorData;
+
+          const onSensorFormSubmit = (e) => {
+              e.preventDefault();
+              const idRaw = document.getElementById('sensor-id-field').value;
+              const id = idRaw ? parseInt(idRaw) : null;
+              const sensorData = {
+                  deviceId: parseInt(document.getElementById('sensor-device-id').value),
+                  sensorType: document.getElementById('sensor-type').value,
+                  value: parseFloat(document.getElementById('sensor-value').value),
+                  anomaly: document.getElementById('sensor-anomaly').value === 'true',
+                  timestamp: new Date().toISOString()
+              };
+
+              if (id) {
+                  debugLog(`Updating sensor reading ${id}`);
+                  const existing = state.sensorData.get(id);
+                  state.sensorData.set(id, { ...existing, ...sensorData, id });
+                  toast('Sensor reading updated');
+              } else {
+                  debugLog(`Creating new sensor reading`);
+                  const newId = state.nextSensorId++;
+                  state.sensorData.set(newId, {
+                      id: newId,
+                      ...sensorData
+                  });
+                  state.totalReadings++;
+                  if (sensorData.anomaly) state.anomalies++;
+
+                  document.getElementById('total-readings-count').textContent = state.totalReadings;
+                  document.getElementById('anomalies-count').textContent = state.anomalies;
+
+                  // small immediate UI update
+                  updateChart(sensorData);
+                  batchAddLiveFeedEntries([sensorData]);
+                  toast('Sensor reading created');
+              }
+
+              renderSensorDataTable();
+              renderAllSensorDataTable();
+              closeModal('sensor-modal');
+          };
+
+
+      /* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
+      function updateWsStatus(connected) {
+          const dot = document.getElementById('ws-status-dot');
+          const text = document.getElementById('ws-status-text');
+          const connectionStatus = document.getElementById('connection-status');
+
+          if (!dot || !text) return;
+          if (connected) {
+              dot.className = 'status-dot status-active';
+              text.textContent = 'Connected';
+              if (connectionStatus) connectionStatus.textContent = 'Connected';
+              if (connectionStatus) connectionStatus.className = 'font-medium text-green-600';
+          } else {
+              dot.className = 'status-dot status-error';
+              text.textContent = 'Disconnected';
+              if (connectionStatus) connectionStatus.textContent = 'Disconnected';
+              if (connectionStatus) connectionStatus.className = 'font-medium text-red-600';
+          }
       }
-    });
-  } catch (e) {
-    console.error('subscribeSimulatorControl error', e);
-  }
-}
 
-// Called on disconnect/shutdown to cleanup subs
-function unsubscribeSimulatorControl() {
-  if (!state.__simControlSubs) return;
-  state.__simControlSubs.forEach(s => {
-    try { if (s.sub && typeof s.sub.unsubscribe === 'function') s.sub.unsubscribe(); } catch(e){}
-  });
-  state.__simControlSubs = null;
-}
+      function startFlushTimerIfNeeded() {
+        if (state.flushTimer) return;
+        state.flushTimer = setInterval(flushIncomingBuffer, FLUSH_INTERVAL_MS);
+      }
 
-/* WebSocket connect */
-function connectWebSocket() {
-    debugLog('Attempting WebSocket connection...');
+      function stopFlushTimerIfEmpty() {
+        if (state.flushTimer && state.incomingBuffer.length === 0) {
+          clearInterval(state.flushTimer);
+          state.flushTimer = null;
+        }
+      }
+
+      function flushIncomingBuffer() {
+        const buf = state.incomingBuffer.splice(0, 1000); // take at most 1000 per flush
+        if (!buf || buf.length === 0) {
+          stopFlushTimerIfEmpty();
+          return;
+        }
+
+        // process buffered readings in batch
+        const chartPoints = [];
+        const feedEntries = [];
+        let anomaliesDelta = 0;
+        buf.forEach(reading => {
+          // ensure id and timestamp
+          const id = reading.id ?? state.nextSensorId++;
+          reading.id = id;
+          if (!reading.timestamp) reading.timestamp = new Date().toISOString();
+          state.sensorData.set(id, reading);
+          state.totalReadings++;
+          if (reading.anomaly) anomaliesDelta++;
+
+          // chart point if temperature
+          if (reading.sensorType === 'TEMPERATURE') {
+            chartPoints.push({x: new Date(reading.timestamp), y: parseFloat(reading.value)});
+          }
+
+          feedEntries.push(reading);
+        });
+
+        state.anomalies += anomaliesDelta;
+        // update counters once
+        document.getElementById('total-readings-count').textContent = state.totalReadings;
+        document.getElementById('anomalies-count').textContent = state.anomalies;
+
+        // batch update chart and feed
+        if (chartPoints.length) batchPushChartPoints(chartPoints);
+        batchAddLiveFeedEntries(feedEntries);
+
+        // update tables
+        renderSensorDataTable();
+        renderAllSensorDataTable();
+      }
+  /* ---------------- Reliable Simulator Control + STOMP subscription ---------------- */
+
+  // API base = same origin as where frontend is served
+  const SIM_API_BASE = window.location.origin;
+  console.log('[DEBUG] SIM_API_BASE =', SIM_API_BASE);
+
+      // candidate status endpoints (tried in order)
+      const STATUS_ENDPOINT_CANDIDATES = [
+        `${SIM_API_BASE}/simulator/status`,
+        `${SIM_API_BASE}/status`,
+        `${SIM_API_BASE}/api/simulator/status`
+      ];
+
+      // candidate start endpoints (tried in order)
+      const START_ENDPOINT_CANDIDATES = [
+        `${SIM_API_BASE}/simulator/startAll`,
+        `${SIM_API_BASE}/api/simulator/start`,
+        `${SIM_API_BASE}/api/simulator/startAll`,
+        `${SIM_API_BASE}/simulator/start`
+      ];
+
+      // candidate stop endpoints (tried in order)
+      const STOP_ENDPOINT_CANDIDATES = [
+        `${SIM_API_BASE}/simulator/stopAll`,
+        `${SIM_API_BASE}/api/simulator/stop`,
+        `${SIM_API_BASE}/api/simulator/stopAll`,
+        `${SIM_API_BASE}/simulator/stop`
+      ];
+
+      // helper: probe status endpoint candidates and return {json, url} or throw
+      async function probeStatusEndpoint() {
+        let lastErr = null;
+        for (const url of STATUS_ENDPOINT_CANDIDATES) {
+          try {
+            const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+            if (!res.ok) {
+              lastErr = new Error(`HTTP ${res.status} from ${url}`);
+              continue;
+            }
+            const json = await res.json();
+            console.log('[DEBUG] status fetched from', url, json);
+            return { json, url };
+          } catch (e) {
+            lastErr = e;
+            console.warn('[DEBUG] status probe failed for', url, e);
+          }
+        }
+        throw lastErr || new Error('No status endpoint succeeded');
+      }
+
+      // core: sync UI with server status
+      async function syncSimulatorStatus() {
+        try {
+          const { json } = await probeStatusEndpoint();
+          // support legacy { running } and modern { isRunning }
+          const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
+                             : (typeof json.running !== 'undefined') ? Boolean(json.running)
+                             : false;
+          const runningDeviceIds = json.runningDeviceIds || json.runningDevices || json.running || [];
+
+          state.isSimulatorRunning = isRunning;
+          const startBtn = document.getElementById('start-sim-btn');
+          const stopBtn = document.getElementById('stop-sim-btn');
+          const statusEl = document.getElementById('dash-sim-status');
+
+          if (isRunning) {
+            if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+            if (startBtn) startBtn.disabled = true;
+            if (stopBtn) stopBtn.disabled = false;
+          } else {
+            if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+            if (startBtn) startBtn.disabled = false;
+            if (stopBtn) stopBtn.disabled = true;
+          }
+
+          debugLog('syncSimulatorStatus -> isRunning=' + isRunning + ' devices=' + (runningDeviceIds || []).join(', '));
+          return { isRunning, runningDeviceIds };
+        } catch (e) {
+          console.error('[DEBUG] syncSimulatorStatus failed', e);
+          // keep UI conservative (don't flip buttons aggressively)
+          return { isRunning: state.isSimulatorRunning, runningDeviceIds: [] };
+        }
+      }
+
+      // helper to call first-success endpoint from a candidates list
+      async function callFirstSuccess(urls, options = {}) {
+        let lastErr = null;
+        for (const url of urls) {
+          try {
+            const res = await fetch(url, options);
+            if (res.ok) {
+              console.log('[DEBUG] callFirstSuccess ok ->', url, res.status);
+              return { res, url };
+            } else {
+              console.warn('[DEBUG] callFirstSuccess non-ok ->', url, res.status);
+              lastErr = new Error(`HTTP ${res.status} from ${url}`);
+            }
+          } catch (e) {
+            console.warn('[DEBUG] callFirstSuccess failed ->', url, e);
+            lastErr = e;
+          }
+        }
+        throw lastErr || new Error('All calls failed');
+      }
+
+      // After start/stop, poll status endpoint up to N times to confirm server state (helps with race)
+      async function waitForStatusConfirm(desiredRunning, maxTries = 8, intervalMs = 400) {
+        for (let i = 0; i < maxTries; i++) {
+          try {
+            const { json } = await probeStatusEndpoint();
+            const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
+                               : (typeof json.running !== 'undefined') ? Boolean(json.running) : false;
+            if (isRunning === desiredRunning) {
+              // update UI once confirmed
+              await syncSimulatorStatus();
+              return true;
+            }
+          } catch (e) {
+            // ignore and retry
+          }
+          await new Promise(r => setTimeout(r, intervalMs));
+        }
+        // final attempt to sync UI anyway
+        await syncSimulatorStatus();
+        return false;
+      }
+
+      // Start simulator (robust, idempotent)
+      async function startSimulator() {
+        const startBtn = document.getElementById('start-sim-btn');
+        const stopBtn = document.getElementById('stop-sim-btn');
+        const statusEl = document.getElementById('dash-sim-status');
+
+        if (startBtn) startBtn.disabled = true;
+        if (stopBtn) stopBtn.disabled = true;
+
+        try {
+          debugLog('Starting simulator (robust)...');
+          await callFirstSuccess(START_ENDPOINT_CANDIDATES, { method: 'POST' });
+
+          // optimistic UI while waiting for server confirm
+          state.isSimulatorRunning = true;
+          if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+          if (startBtn) startBtn.disabled = true;
+          if (stopBtn) stopBtn.disabled = false;
+
+          // confirm server state (poll)
+          const confirmed = await waitForStatusConfirm(true);
+          if (!confirmed) {
+            toast('Started request sent but server did not confirm; check logs', true);
+          } else {
+            toast('Simulator started successfully');
+          }
+          debugLog('Start sequence finished, confirmed=' + confirmed);
+        } catch (e) {
+          debugLog('Failed to start simulator: ' + (e.message || e));
+          toast('Failed to start simulator', true);
+          // restore conservative state by re-syncing
+          await syncSimulatorStatus();
+        } finally {
+          if (startBtn && !state.isSimulatorRunning) startBtn.disabled = false;
+        }
+      }
+
+      // Stop simulator (robust, idempotent)
+      async function stopSimulator() {
+        const startBtn = document.getElementById('start-sim-btn');
+        const stopBtn = document.getElementById('stop-sim-btn');
+        const statusEl = document.getElementById('dash-sim-status');
+
+        if (startBtn) startBtn.disabled = true;
+        if (stopBtn) stopBtn.disabled = true;
+
+        try {
+          debugLog('Stopping simulator (robust)...');
+          await callFirstSuccess(STOP_ENDPOINT_CANDIDATES, { method: 'POST' });
+
+          // optimistic UI
+          state.isSimulatorRunning = false;
+          if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+          if (startBtn) startBtn.disabled = false;
+          if (stopBtn) stopBtn.disabled = true;
+
+          // confirm server state
+          const confirmed = await waitForStatusConfirm(false);
+          if (!confirmed) {
+            toast('Stop request sent but server did not confirm; check logs', true);
+          } else {
+            toast('Simulator stopped successfully');
+          }
+          debugLog('Stop sequence finished, confirmed=' + confirmed);
+        } catch (e) {
+          debugLog('Failed to stop simulator: ' + (e.message || e));
+          toast('Failed to stop simulator', true);
+          // restore conservative state
+          await syncSimulatorStatus();
+        } finally {
+          if (stopBtn && state.isSimulatorRunning) stopBtn.disabled = false;
+        }
+      }
+
+      /* ---------------- STOMP subscription helpers ---------------- */
+
+      // Single normalized handler for control messages
+      function handleSimulatorControlMessage(body) {
+        const running = (typeof body.isRunning !== 'undefined') ? Boolean(body.isRunning)
+                     : (typeof body.running !== 'undefined') ? Boolean(body.running)
+                     : false;
+        const startBtn = document.getElementById('start-sim-btn');
+        const stopBtn = document.getElementById('stop-sim-btn');
+        const statusEl = document.getElementById('dash-sim-status');
+
+        state.isSimulatorRunning = running;
+        if (running) {
+          if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+          if (startBtn) startBtn.disabled = true;
+          if (stopBtn) stopBtn.disabled = false;
+        } else {
+          if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+          if (startBtn) startBtn.disabled = false;
+          if (stopBtn) stopBtn.disabled = true;
+        }
+        debugLog('handleSimulatorControlMessage -> running=' + running + ' body=' + JSON.stringify(body));
+      }
+
+      // Subscribe to multiple possible topics and normalize messages (call after STOMP connect)
+      function subscribeSimulatorControl() {
+        try {
+          if (!state.stompClient || typeof state.stompClient.subscribe !== 'function') {
+            debugLog('subscribeSimulatorControl: stompClient not ready');
+            return;
+          }
+          // avoid double subs
+          if (state.__simControlSubs) {
+            debugLog('subscribeSimulatorControl: already subscribed');
+            return;
+          }
+          state.__simControlSubs = [];
+
+          const topics = ['/topic/simulator-control', '/topic/simulator-status', '/topic/sim-control'];
+          topics.forEach(topic => {
+            try {
+              const sub = state.stompClient.subscribe(topic, (message) => {
+                try {
+                  console.log('[DEBUG] raw control msg from', topic, message);
+                  const body = message && message.body ? JSON.parse(message.body) : message;
+                  handleSimulatorControlMessage(body);
+                } catch (e) {
+                  console.warn('[DEBUG] failed parse control msg from', topic, e);
+                }
+              });
+              state.__simControlSubs.push({ topic, sub });
+              debugLog('Subscribed to ' + topic);
+            } catch (e) {
+              console.warn('subscribe failed for', topic, e);
+            }
+          });
+        } catch (e) {
+          console.error('subscribeSimulatorControl error', e);
+        }
+      }
+
+      // Called on disconnect/shutdown to cleanup subs
+      function unsubscribeSimulatorControl() {
+        if (!state.__simControlSubs) return;
+        state.__simControlSubs.forEach(s => {
+          try { if (s.sub && typeof s.sub.unsubscribe === 'function') s.sub.unsubscribe(); } catch(e){}
+        });
+        state.__simControlSubs = null;
+      }
+
+     /* WebSocket connect */
+async function connectWebSocket() {
+    debugLog('Fetching WebSocket URL from backend...');
     try {
-        const socketFactory = () => new SockJS(WEBSOCKET_URL);
+        // fetch dynamic URL from backend
+        const res = await fetch(`${API_BASE}/api/config/ws-url`);
+        const { wsUrl } = await res.json();
+        debugLog(`Connecting WebSocket to ${wsUrl}`);
+
+        const socketFactory = () => new SockJS(wsUrl);
         state.stompClient = new StompJs.Client({
             webSocketFactory: socketFactory,
             reconnectDelay: 5000,
@@ -1876,11 +1887,10 @@ function connectWebSocket() {
             // ensure UI reflects server auto-start immediately
             syncSimulatorStatus().catch(()=>{});
 
-            // sensor-data subscription: push to buffer, not DOM
+            // sensor-data subscription
             state.stompClient.subscribe('/topic/sensor-data', (message) => {
                 try {
                     const reading = JSON.parse(message.body);
-                    // push to incoming buffer
                     state.incomingBuffer.push(reading);
                     startFlushTimerIfNeeded();
                 } catch (e) {
@@ -1888,7 +1898,7 @@ function connectWebSocket() {
                 }
             });
 
-            // device-status subscription: applies directly (low volume)
+            // device-status subscription
             state.stompClient.subscribe('/topic/device-status', (message) => {
                 try {
                     const deviceUpdate = JSON.parse(message.body);
@@ -1905,12 +1915,12 @@ function connectWebSocket() {
                 }
             });
 
-            // subscribe to control topics (keeps UI synced to server auto-start)
+            // simulator control
             subscribeSimulatorControl();
         };
 
         state.stompClient.onStompError = (frame) => {
-            debugLog('STOMP error: ' + (frame && frame.headers ? frame.headers['message'] : JSON.stringify(frame)));
+            debugLog('STOMP error: ' + (frame?.headers?.message || JSON.stringify(frame)));
             updateWsStatus(false);
             toast('WebSocket error occurred', true);
         };
@@ -1922,6 +1932,7 @@ function connectWebSocket() {
         };
 
         state.stompClient.activate();
+
     } catch (e) {
         debugLog('Failed to connect WebSocket: ' + (e.message||e));
         updateWsStatus(false);
@@ -1929,129 +1940,129 @@ function connectWebSocket() {
     }
 }
 
-/* ---------------- Other Controls ---------------- */
-async function clearAllData() {
-    if (!confirm('Clear all sensor data and reset counters? This action cannot be undone.')) return;
+      /* ---------------- Other Controls ---------------- */
+      async function clearAllData() {
+          if (!confirm('Clear all sensor data and reset counters? This action cannot be undone.')) return;
 
-    try {
-        debugLog('Clearing all data...');
-        const res = await fetch(`${API_BASE}/sensor/clear`, { method: 'DELETE' });
-        if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+          try {
+              debugLog('Clearing all data...');
+              const res = await fetch(`${API_BASE}/sensor/clear`, { method: 'DELETE' });
+              if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
 
-        state.sensorData.clear();
-        state.totalReadings = 0;
-        state.anomalies = 0;
+              state.sensorData.clear();
+              state.totalReadings = 0;
+              state.anomalies = 0;
 
-        document.getElementById('total-readings-count').textContent = 0;
-        document.getElementById('anomalies-count').textContent = 0;
+              document.getElementById('total-readings-count').textContent = 0;
+              document.getElementById('anomalies-count').textContent = 0;
 
-        renderSensorDataTable();
-        renderAllSensorDataTable();
+              renderSensorDataTable();
+              renderAllSensorDataTable();
 
-        if (state.chart) {
-            state.chart.data.datasets[0].data = [];
-            state.chart.update();
-        }
+              if (state.chart) {
+                  state.chart.data.datasets[0].data = [];
+                  state.chart.update();
+              }
 
-        document.getElementById('live-feed').innerHTML = '';
-        toast('All data cleared successfully');
-        debugLog('Data cleared successfully');
-    } catch (e) {
-        debugLog('Failed to clear data: ' + (e.message||e));
-        // fallback local reset
-        state.sensorData.clear();
-        state.totalReadings = 0;
-        state.anomalies = 0;
+              document.getElementById('live-feed').innerHTML = '';
+              toast('All data cleared successfully');
+              debugLog('Data cleared successfully');
+          } catch (e) {
+              debugLog('Failed to clear data: ' + (e.message||e));
+              // fallback local reset
+              state.sensorData.clear();
+              state.totalReadings = 0;
+              state.anomalies = 0;
 
-        document.getElementById('total-readings-count').textContent = 0;
-        document.getElementById('anomalies-count').textContent = 0;
+              document.getElementById('total-readings-count').textContent = 0;
+              document.getElementById('anomalies-count').textContent = 0;
 
-        renderSensorDataTable();
-        renderAllSensorDataTable();
+              renderSensorDataTable();
+              renderAllSensorDataTable();
 
-        if (state.chart) {
-            state.chart.data.datasets[0].data = [];
-            state.chart.update();
-        }
+              if (state.chart) {
+                  state.chart.data.datasets[0].data = [];
+                  state.chart.update();
+              }
 
-        document.getElementById('live-feed').innerHTML = '';
-        toast('Data cleared (local)');
-    }
-}
+              document.getElementById('live-feed').innerHTML = '';
+              toast('Data cleared (local)');
+          }
+      }
 
-async function controlDevice(action, deviceIdParam=null) {
-    const valueFromInput = deviceIdParam ?? document.getElementById('device-id-input')?.value;
-    const deviceId = valueFromInput ? String(valueFromInput).trim() : '';
-    if (!deviceId) {
-        toast('Please enter a device ID', true);
-        return;
-    }
+      async function controlDevice(action, deviceIdParam=null) {
+          const valueFromInput = deviceIdParam ?? document.getElementById('device-id-input')?.value;
+          const deviceId = valueFromInput ? String(valueFromInput).trim() : '';
+          if (!deviceId) {
+              toast('Please enter a device ID', true);
+              return;
+          }
 
-    try {
-        debugLog(`${action} device ${deviceId}...`);
-        const endpoint = action === 'disconnect' ? 'disconnect' :
-                       action === 'reconnect' ? 'reconnect' : 'inject-anomaly';
+          try {
+              debugLog(`${action} device ${deviceId}...`);
+              const endpoint = action === 'disconnect' ? 'disconnect' :
+                             action === 'reconnect' ? 'reconnect' : 'inject-anomaly';
 
-        const res = await fetch(`${API_BASE}/admin/simulator/${endpoint}/${deviceId}`, { method: 'POST' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const res = await fetch(`${API_BASE}/admin/simulator/${endpoint}/${deviceId}`, { method: 'POST' });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        toast(`Device ${deviceId}: ${action} successful`);
-        debugLog(`Device ${deviceId}: ${action} completed`);
-    } catch (e) {
-        debugLog(`Failed to ${action} device: ` + (e.message||e));
-        toast(`Failed to ${action} device`, true);
-    }
-}
+              toast(`Device ${deviceId}: ${action} successful`);
+              debugLog(`Device ${deviceId}: ${action} completed`);
+          } catch (e) {
+              debugLog(`Failed to ${action} device: ` + (e.message||e));
+              toast(`Failed to ${action} device`, true);
+          }
+      }
 
-/* ---------------- Event Listeners ---------------- */
-document.addEventListener('DOMContentLoaded', () => {
-    initChart();
-    loadDevices();
-    loadSensors();
-    connectWebSocket();
+      /* ---------------- Event Listeners ---------------- */
+      document.addEventListener('DOMContentLoaded', () => {
+          initChart();
+          loadDevices();
+          loadSensors();
+          connectWebSocket();
 
-    // ensure UI reflects server auto-start immediately
-    syncSimulatorStatus().catch(()=>{});
+          // ensure UI reflects server auto-start immediately
+          syncSimulatorStatus().catch(()=>{});
 
-    // forms
-    document.getElementById('device-form')?.addEventListener('submit', onDeviceFormSubmit);
-    document.getElementById('sensor-form')?.addEventListener('submit', onSensorFormSubmit);
+          // forms
+          document.getElementById('device-form')?.addEventListener('submit', onDeviceFormSubmit);
+          document.getElementById('sensor-form')?.addEventListener('submit', onSensorFormSubmit);
 
-    // modals
-    document.querySelectorAll('.cancel-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const modal = e.target.closest('.fixed');
-            if (modal) modal.classList.add('hidden');
-        });
-    });
+          // modals
+          document.querySelectorAll('.cancel-btn').forEach(btn => {
+              btn.addEventListener('click', (e) => {
+                  const modal = e.target.closest('.fixed');
+                  if (modal) modal.classList.add('hidden');
+              });
+          });
 
-    // simulator buttons - remove any existing listeners to avoid duplication
-    const startBtn = document.getElementById('start-sim-btn');
-    const stopBtn = document.getElementById('stop-sim-btn');
+          // simulator buttons - remove any existing listeners to avoid duplication
+          const startBtn = document.getElementById('start-sim-btn');
+          const stopBtn = document.getElementById('stop-sim-btn');
 
-    if (startBtn) {
-        startBtn.removeEventListener('click', startSimulator);
-        startBtn.addEventListener('click', startSimulator);
-    }
-    if (stopBtn) {
-        stopBtn.removeEventListener('click', stopSimulator);
-        stopBtn.addEventListener('click', stopSimulator);
-    }
+          if (startBtn) {
+              startBtn.removeEventListener('click', startSimulator);
+              startBtn.addEventListener('click', startSimulator);
+          }
+          if (stopBtn) {
+              stopBtn.removeEventListener('click', stopSimulator);
+              stopBtn.addEventListener('click', stopSimulator);
+          }
 
-    document.getElementById('clear-data-btn')?.addEventListener('click', clearAllData);
+          document.getElementById('clear-data-btn')?.addEventListener('click', clearAllData);
 
-    // logs
-    document.getElementById('clear-log-btn')?.addEventListener('click', () => {
-        if (debugLogEl) debugLogEl.innerHTML = '';
-        state.debugLines = [];
-        debugLog('Debug log cleared by user');
-    });
+          // logs
+          document.getElementById('clear-log-btn')?.addEventListener('click', () => {
+              if (debugLogEl) debugLogEl.innerHTML = '';
+              state.debugLines = [];
+              debugLog('Debug log cleared by user');
+          });
 
-    // filters
-    document.getElementById('sensor-type-filter')?.addEventListener('change', renderSensorDataTable);
+          // filters
+          document.getElementById('sensor-type-filter')?.addEventListener('change', renderSensorDataTable);
 
-    debugLog('Modern IoT Dashboard initialized successfully');
-});
+          debugLog('Modern IoT Dashboard initialized successfully');
+      });
 </script>
 
 

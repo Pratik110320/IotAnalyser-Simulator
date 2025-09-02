@@ -1,293 +1,218 @@
 package com.pratik.IotAnalyser.simulator;
 
-import com.pratik.IotAnalyser.dtos.sensorDto.SensorRegistrationDto;
-import com.pratik.IotAnalyser.model.Device;
-import com.pratik.IotAnalyser.model.SensorData;
-import com.pratik.IotAnalyser.repository.DeviceRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.messaging.simp.stomp.StompSession;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
 
-/**
- * Multi-device simulator that is resilient to slight DTO/model differences.
- * - Uses reflection fallbacks when DTO constructors or setters are missing.
- * - Generates random readings locally instead of relying on SensorData.random(...)
- */
 @Service
 public class MultiDeviceSimulatorService {
 
-    private static final Logger log = LoggerFactory.getLogger(MultiDeviceSimulatorService.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
 
-    private final SimulatorConfig config;
-    private final WebSocketClientService clientService;
-    private final ThreadPoolTaskScheduler scheduler;
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
 
-    private final Map<Long, StompSession> activeSessions = new ConcurrentHashMap<>();
-    private final Map<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
+    // deviceId -> scheduled task
+    private final Map<String, ScheduledFuture<?>> deviceTasks = new ConcurrentHashMap<>();
+    private volatile boolean simulatorRunning = false;
 
-    private final DeviceRepository deviceRepository;
-    public MultiDeviceSimulatorService(SimulatorConfig config, WebSocketClientService clientService, DeviceRepository deviceRepository) {
-        this.config = config;
-        this.clientService = clientService;
-        this.deviceRepository = deviceRepository;
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-        this.scheduler = new ThreadPoolTaskScheduler();
-        this.scheduler.setPoolSize(Math.max(2, Runtime.getRuntime().availableProcessors()));
-        this.scheduler.initialize();
+    public MultiDeviceSimulatorService() {
+        scheduler.setPoolSize(4);
+        scheduler.initialize();
     }
 
-    /** ---------------- Simulation Control ---------------- **/
-    public void startSimulation() {
-        log.info("Starting simulation for {} devices", config.getDeviceCount());
-        for (long i = 1; i <= config.getDeviceCount(); i++) {
-            registerOneDevice(i);
-        }
-    }
-
-    public void stopSimulation() {
-        log.info("Stopping simulation");
-        scheduledTasks.values().forEach(f -> f.cancel(true));
-        activeSessions.values().forEach(session -> {
-            try { session.disconnect(); } catch (Exception ignored) {}
-        });
-        scheduledTasks.clear();
-        activeSessions.clear();
-    }
-
-    public void registerOneDevice(Long deviceIndex) {
-        log.info("Registering device {}", deviceIndex);
-
-        // 1. Create & persist Device
-        Device device = new Device();
-        device.setDeviceName("DEVICE_" + deviceIndex);
-        device.setDeviceType("SIMULATED");
-        device.setRegisteredAt(LocalDateTime.now());
-        device.setLastActiveAt(LocalDateTime.now());
-        device.setStatus(Device.Status.ONLINE);
-
-        Device persistedDevice = deviceRepository.save(device);
-        final Long persistedId = persistedDevice.getDeviceId();
-        final Device finalDevice = persistedDevice;  // final reference for lambda
-
-        log.info("Device persisted with ID {}", persistedId);
-
-        // 2. Connect WebSocket
-        StompSession session = clientService.connect(config.getServerUrl());
-
-        if (session != null && session.isConnected()) {
-            activeSessions.put(persistedId, session);
-
-            // 3. Send registration DTO
-            SensorRegistrationDto dto = buildRegistrationDto(
-                    persistedId,
-                    finalDevice.getDeviceName(),
-                    config.getSensorTypes()
-            );
-            clientService.registerDevice(session, "/app/register", dto);
-
-            // 4. Schedule periodic sensor data
-            ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(() -> {
-
-                for (String sensorType : config.getSensorTypes()) {
-                    // send 2 readings at once to look busy
-                    for (int i = 0; i < 2; i++) {
-                        SensorData data = createRandomSensorData(persistedId, sensorType);
-                        clientService.sendSensorData(session, "/app/sensor-data", data);
-                    }
-                }
-            }, config.getDataPushInterval());
-
-            scheduledTasks.put(persistedId, task);
-
-        } else {
-            log.warn("Could not create stomp session for device {} — not scheduling tasks", deviceIndex);
-        }
-    }
-
-    public void disconnectDevice(Long deviceId) {
-        log.info("Disconnecting device {}", deviceId);
-        Optional.ofNullable(activeSessions.remove(deviceId)).ifPresent(session -> {
-            try { session.disconnect(); } catch (Exception ignored) {}
-        });
-        Optional.ofNullable(scheduledTasks.remove(deviceId)).ifPresent(f -> f.cancel(true));
-    }
-
-    public void reconnectDevice(Long deviceId) {
-        log.info("Reconnecting device {}", deviceId);
-        disconnectDevice(deviceId);
-        registerOneDevice(deviceId);
-    }
-
-    /** ---------------- Anomaly Injection ---------------- **/
-    public void injectAnomalyToDevice(Long deviceId) {
-        log.info("Injecting anomaly for device {}", deviceId);
-        StompSession session = activeSessions.get(deviceId);
-        if (session != null && session.isConnected()) {
-            // pick a sensor type and force anomaly
-            String sensorType = config.getSensorTypes().isEmpty() ? "SENSOR" : config.getSensorTypes().get(0);
-            SensorData anomaly = createAnomalySensorData(deviceId, sensorType, true);
-            clientService.sendSensorData(session, "/app/sensor-data", anomaly);
-        } else {
-            log.warn("Cannot inject anomaly — session missing or disconnected for device {}", deviceId);
-        }
-    }
-
-    /** ---------------- Utils: DTO & Model builders ---------------- **/
-
-    /**
-     * Try to construct a SensorRegistrationDto using:
-     * 1) a (Long,String,List) constructor if present
-     * 2) no-arg constructor + public setters (setDeviceId, setDeviceName, setSensorTypes)
-     * 3) field access fallback (reflectively set fields)
-     */
-    private SensorRegistrationDto buildRegistrationDto(Long deviceId, String deviceName, List<String> sensorTypes) {
-        try {
-            // try specific constructor
-            Constructor<SensorRegistrationDto> ctor = SensorRegistrationDto.class.getConstructor(Long.class, String.class, List.class);
-            return ctor.newInstance(deviceId, deviceName, sensorTypes);
-        } catch (NoSuchMethodException ignored) {
-            // fallback to no-arg + setters / fields
-        } catch (Exception e) {
-            log.warn("Failed to construct SensorRegistrationDto with (Long,String,List) ctor: {}", e.getMessage());
-        }
-
-        try {
-            SensorRegistrationDto dto = SensorRegistrationDto.class.getDeclaredConstructor().newInstance();
-
-            // try common setters
-            tryInvokeSetter(dto, "setDeviceId", deviceId);
-            tryInvokeSetter(dto, "setDeviceName", deviceName);
-            tryInvokeSetter(dto, "setSensorTypes", sensorTypes);
-
-            // If setters didn't exist, try field names directly
-            trySetFieldIfPresent(dto, "deviceId", deviceId);
-            trySetFieldIfPresent(dto, "deviceName", deviceName);
-            trySetFieldIfPresent(dto, "sensorTypes", sensorTypes);
-
-            return dto;
-        } catch (Exception ex) {
-            log.error("Unable to create SensorRegistrationDto reflectively: {}", ex.getMessage(), ex);
-            // As last resort, return null — callers should handle null (you can also throw)
-            return null;
-        }
-    }
-    private SensorData createRandomSensorData(Long deviceId, String sensorType) {
-        SensorData sd = new SensorData();
-
-        // ✅ create stub Device with only ID
-        Device d = new Device(deviceId);
-        d.setDeviceId(deviceId);
-        sd.setDevice(d);
-
-        // ✅ set sensor info
-        sd.setSensorType(sensorType);
-        sd.setTimestamp(LocalDateTime.now());
-
-        double value = ThreadLocalRandom.current().nextDouble(10.0, 45.0);
-        sd.setValue(value);
-
-        boolean anomaly = ThreadLocalRandom.current().nextDouble() < config.getAnomalyProbability();
-        sd.setAnomaly(anomaly);
-
-        return sd;
-    }
-
-    private SensorData createAnomalySensorData(Long deviceId, String sensorType, boolean forceAnomaly) {
-        SensorData sd = createRandomSensorData(deviceId, sensorType);
-
-        sd.setAnomaly(true); // force anomaly
-        sd.setValue(sd.getValue() * 1.5); // exaggerate value
-
-        return sd;
-    }
-
-
-    /** ---------------- Reflection helpers ---------------- **/
-
-    private void tryInvokeSetter(Object target, String setterName, Object value) {
-        if (target == null || setterName == null) return;
-        try {
-            Method m = findMethodIgnoreCase(target.getClass(), setterName, value == null ? new Class<?>[]{Object.class} : new Class<?>[]{value.getClass()});
-            if (m != null) {
-                m.setAccessible(true);
-                m.invoke(target, value);
-            }
-        } catch (Exception ignored) {
-            // ignore — fallback will try fields
-        }
-    }
-
-    private void trySetFieldIfPresent(Object target, String fieldName, Object value) {
-        if (target == null) return;
-        try {
-            Field f = findFieldIgnoreCase(target.getClass(), fieldName);
-            if (f != null) {
-                f.setAccessible(true);
-                f.set(target, value);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private void bumpNumericField(Object target, String fieldName, double multiplier) {
-        Field f = findFieldIgnoreCase(target.getClass(), fieldName);
-        if (f == null) return;
-        f.setAccessible(true);
-        Object val;
-        try {
-            val = f.get(target);
-            if (val instanceof Number) {
-                double newVal = ((Number) val).doubleValue() * multiplier;
-                // set back using appropriate type
-                if (val instanceof Integer) f.set(target, (int) newVal);
-                else if (val instanceof Long) f.set(target, (long) newVal);
-                else f.set(target, newVal);
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private Method findMethodIgnoreCase(Class<?> clazz, String methodName, Class<?>[] paramTypes) {
-        // try exact match first
-        try {
-            return clazz.getMethod(methodName, paramTypes);
-        } catch (NoSuchMethodException ignored) {}
-
-        // try any method with same name (ignore case) and parameter count 1
-        for (Method m : clazz.getMethods()) {
-            if (m.getName().equalsIgnoreCase(methodName) && m.getParameterCount() == 1) {
-                return m;
-            }
-        }
-        return null;
-    }
-
-    private Field findFieldIgnoreCase(Class<?> clazz, String fieldName) {
-        Class<?> c = clazz;
-        while (c != null) {
-            for (Field f : c.getDeclaredFields()) {
-                if (f.getName().equalsIgnoreCase(fieldName)) return f;
-            }
-            c = c.getSuperclass();
-        }
-        return null;
-    }
 
     public void waitForAnalyser() {
         try {
-            Thread.sleep(3000L); // 3 seconds — increase if necessary
-        } catch (InterruptedException ignored) {
+            Thread.sleep(3000);
+    } catch (InterruptedException e)
+        {
             Thread.currentThread().interrupt();
+            System.out.println("waitForAnalyser interrupted");
+        } }
+    /**
+     * Auto-start simulator on boot (keeps the auto-start behavior).
+     * We schedule a small delayed start so websocket endpoints have time to be ready.
+     */
+    @PostConstruct
+    public void autoStartOnBoot() {
+        // schedule a one-time task 2s after boot to start simulator (idempotent)
+        scheduler.schedule(this::startSimulationIfNeeded, new Date(System.currentTimeMillis() + 2000));
+    }
+
+    /**
+     * Handle frontend connection notifications from SensorWebSocketHandler (if you use that).
+     */
+    public synchronized void handleFrontendMessage(String msg) {
+        if ("FRONTEND_CONNECTED".equals(msg)) {
+            startSimulationIfNeeded();
+            simulatorRunning = true; // ensure flag is set
+            notifyStatus();
+        } else if ("FRONTEND_DISCONNECTED".equals(msg)) {
+            stopSimulation();
+            notifyStatus();
         }
-}}
+    }
+
+    /**
+     * Start simulation if not already running
+     */
+    public synchronized void startSimulationIfNeeded() {
+        if (simulatorRunning) return;
+        simulatorRunning = true;
+        System.out.println("Simulator started");
+
+        // Example: simulate 3 devices (adjust as required)
+        startDevice("device-1");
+        startDevice("device-2");
+        startDevice("device-3");
+
+        notifyStatus();
+    }
+
+    /**
+     * Start a single device simulator (idempotent)
+     */
+    public synchronized void startDevice(String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) return;
+        if (deviceTasks.containsKey(deviceId)) return;
+
+        // schedule periodic pushes (every 2 seconds)
+        ScheduledFuture<?> task = scheduler.scheduleAtFixedRate(() -> pushData(deviceId), 2000);
+        deviceTasks.put(deviceId, task);
+
+        // ensure overall running flag is true
+        simulatorRunning = true;
+        notifyStatus();
+    }
+
+    /**
+     * Stop simulation (all devices)
+     */
+    public synchronized void stopSimulation() {
+        if (!simulatorRunning && deviceTasks.isEmpty()) {
+            System.out.println("Simulator already stopped");
+            return;
+        }
+
+        simulatorRunning = false;
+        deviceTasks.values().forEach(task -> task.cancel(true));
+        deviceTasks.clear();
+
+        System.out.println("Simulator stopped");
+        notifyStatus();
+    }
+
+    /**
+     * Stop a single device
+     * @return true if a running task was cancelled
+     */
+    public synchronized boolean stopDevice(String deviceId) {
+        if (deviceId == null) return false;
+        ScheduledFuture<?> f = deviceTasks.remove(deviceId);
+        if (f != null) {
+            f.cancel(true);
+            // if no devices left, mark simulator not running
+            if (deviceTasks.isEmpty()) simulatorRunning = false;
+            notifyStatus();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Get running device ids
+     */
+    public Set<String> getRunningDeviceIds() {
+        return Collections.unmodifiableSet(deviceTasks.keySet());
+    }
+
+    public boolean isRunning() {
+        return simulatorRunning;
+    }
+
+    /**
+     * Push simulated data for a device.
+     * Sends a Map (not a JSON string) so messagingTemplate serializes to JSON correctly.
+     */
+    private void pushData(String deviceId) {
+        if (!simulatorRunning) return; // safety check (also helps when single device stopped)
+
+        try {
+            // pick a sensor type for this tick (random or deterministic per device)
+            String sensorType = pickSensorTypeFor(deviceId);
+            double value = nextValueFor(sensorType, deviceId);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("deviceId", deviceId);
+            data.put("sensorType", sensorType);
+            data.put("value", Math.round(value * 100.0) / 100.0); // round to 2 decimals
+            data.put("timestamp", Instant.now().toString());      // ISO timestamp
+            data.put("time", LocalTime.now().format(TIME_FMT));   // HH:mm:ss for display if needed
+
+            // send the Map object directly — Spring's message converters will turn it into JSON
+            messagingTemplate.convertAndSend("/topic/sensor-data", data);
+
+            // debug log (optional)
+            System.out.println("Simulated data: " + objectMapper.writeValueAsString(data));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Notify frontends about simulator state changes over a control topic.
+     * Frontend should subscribe to /topic/simulator-control to receive these.
+     */
+    private void notifyStatus() {
+        try {
+            Map<String, Object> status = Map.of(
+                    "isRunning", simulatorRunning,
+                    "runningDeviceIds", getRunningDeviceIds(),
+                    "timestamp", Instant.now().toString()
+            );
+            messagingTemplate.convertAndSend("/topic/simulator-control", status);
+        } catch (Exception e) {
+            // log and move on
+            System.err.println("Failed to notify simulator status: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Simple deterministic sensor type picker — modifies per deviceId so you get mixed sensor types.
+     */
+    private String pickSensorTypeFor(String deviceId) {
+        int v = Math.abs(Objects.hashCode(deviceId)) % 3;
+        return switch (v) {
+            case 0 -> "TEMPERATURE";
+            case 1 -> "HUMIDITY";
+            default -> "MOTION";
+        };
+    }
+
+    /**
+     * Produce a realistic-ish numeric reading based on sensor type and device id
+     */
+    private double nextValueFor(String sensorType, String deviceId) {
+        int baseSeed = Math.abs(deviceId.hashCode()) % 50;
+        return switch (sensorType) {
+            case "TEMPERATURE" -> 15.0 + baseSeed * 0.2 + ThreadLocalRandom.current().nextDouble(-3.0, 3.0);
+            case "HUMIDITY" -> 30.0 + baseSeed * 0.4 + ThreadLocalRandom.current().nextDouble(-5.0, 5.0);
+            default -> ThreadLocalRandom.current().nextDouble(0.0, 100.0); // MOTION or other sensors
+        };
+    }
+}

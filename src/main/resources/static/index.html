@@ -16,239 +16,565 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-        body {
-            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
+  body {
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+  }
 
-        .dashboard-bg {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
+  .dashboard-bg {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      margin: 0.5rem;
+      border-radius: 16px;
+  }
 
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-        }
+  .card {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.3s ease;
+      margin: 0.75rem;
+      padding: 1rem;
+  }
 
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
+  .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  }
 
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            position: relative;
-            overflow: hidden;
-        }
+  .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      position: relative;
+      overflow: hidden;
+  }
 
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            right: 0;
-            width: 100px;
-            height: 100px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            transform: translate(30px, -30px);
-        }
+  .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 100px;
+      height: 100px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 50%;
+      transform: translate(30px, -30px);
+  }
 
-        .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
+  .gradient-bg {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
 
-        .status-dot{
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-            position: relative;
-        }
+  .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      position: relative;
+  }
 
-        .status-dot::after {
-            content: '';
-            position: absolute;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: inherit;
-            animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
+  .status-dot::after {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: inherit;
+      animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
 
-        .flash-green{animation:flashGreen 1s ease}
-        .flash-red{animation:flashRed 1s ease}
+  .flash-green { animation: flashGreen 1s ease; }
+  .flash-red { animation: flashRed 1s ease; }
 
-        @keyframes flashGreen{
-            from{background: rgba(34, 197, 94, 0.1)}
-            to{background: transparent}
-        }
-        @keyframes flashRed{
-            from{background: rgba(239, 68, 68, 0.1)}
-            to{background: transparent}
-        }
-        @keyframes ping {
-            75%, 100% {
-                transform: scale(2);
-                opacity: 0;
-            }
-        }
+  @keyframes flashGreen {
+      from { background: rgba(34, 197, 94, 0.1); }
+      to { background: transparent; }
+  }
 
-        .feed-entry{
-            border-left: 4px solid #3b82f6;
-            padding: 1rem;
-            margin-bottom: 0.75rem;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
+  @keyframes flashRed {
+      from { background: rgba(239, 68, 68, 0.1); }
+      to { background: transparent; }
+  }
 
-        .feed-entry:hover {
-            transform: translateX(4px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
+  @keyframes ping {
+      75%, 100% {
+          transform: scale(2);
+          opacity: 0;
+      }
+  }
 
-        .feed-entry.anomaly{
-            border-left-color: #ef4444;
-            background: rgba(254, 242, 242, 0.9);
-        }
+  .feed-entry {
+      border-left: 4px solid #3b82f6;
+      padding: 1rem;
+      margin-bottom: 0.75rem;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      transition: all 0.3s ease;
+  }
 
-        .small{
-            font-size: 0.85rem;
-            color: #6b7280;
-            display: block;
-            margin-top: 0.25rem;
-        }
+  .feed-entry:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
 
-        .debug-log{
-            max-height: 300px;
-            overflow: auto;
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 12px;
-            background: #1f2937;
-            color: #e5e7eb;
-            padding: 1rem;
-            border-radius: 12px;
-            border: 1px solid #374151;
-        }
+  .feed-entry.anomaly {
+      border-left-color: #ef4444;
+      background: rgba(254, 242, 242, 0.9);
+  }
 
-        .tab-button {
-            position: relative;
-            transition: all 0.3s ease;
-        }
+  .small {
+      font-size: 0.85rem;
+      color: #6b7280;
+      display: block;
+      margin-top: 0.25rem;
+  }
 
-        .tab-button.active {
-            color: #667eea;
-            font-weight: 600;
-        }
+  .debug-log {
+      max-height: 300px;
+      overflow: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      background: #1f2937;
+      color: #e5e7eb;
+      padding: 1rem;
+      border-radius: 12px;
+      border: 1px solid #374151;
+  }
 
-        .tab-button.active::after {
-            content: '';
-            position: absolute;
-            bottom: -2px;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
-            border-radius: 2px;
-        }
+  .tab-button {
+      position: relative;
+      transition: all 0.3s ease;
+      padding: 0.75rem 1rem;
+      font-size: 0.9rem;
+  }
 
-        .modal-backdrop {
-            background-color: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(4px);
-            transition: opacity 0.3s ease;
-        }
+  .tab-button.active {
+      color: #667eea;
+      font-weight: 600;
+  }
 
-        .modal-content {
-            transition: transform 0.3s ease;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-        }
+  .tab-button.active::after {
+      content: '';
+      position: absolute;
+      bottom: -2px;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 2px;
+  }
 
-        .status-active { background-color: #22c55e; }
-        .status-inactive { background-color: #f97316; }
-        .status-error { background-color: #ef4444; }
-        .status-connecting {
-            background-color: #eab308;
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
+  .modal-backdrop {
+      background-color: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      transition: opacity 0.3s ease;
+  }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: .5; }
-        }
+  .modal-content {
+      transition: transform 0.3s ease;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      margin: 1rem;
+      max-width: calc(100vw - 2rem);
+      max-height: calc(100vh - 2rem);
+      overflow-y: auto;
+  }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            transition: all 0.3s ease;
-        }
+  .status-active { background-color: #22c55e; }
+  .status-inactive { background-color: #f97316; }
+  .status-error { background-color: #ef4444; }
+  .status-connecting {
+      background-color: #eab308;
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
+  @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .5; }
+  }
 
-        .btn-danger {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            transition: all 0.3s ease;
-        }
+  .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: all 0.3s ease;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      border: none;
+      font-weight: 500;
+      cursor: pointer;
+  }
 
-        .btn-danger:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
-        }
+  .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
 
-        .btn-warning {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            transition: all 0.3s ease;
-        }
+  .btn-danger {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      transition: all 0.3s ease;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      border: none;
+      font-weight: 500;
+      cursor: pointer;
+  }
 
-        .btn-warning:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
-        }
+  .btn-danger:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+  }
 
-        .tooltip {
-            position: relative;
-        }
+  .btn-warning {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      transition: all 0.3s ease;
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      border: none;
+      font-weight: 500;
+      cursor: pointer;
+  }
 
-        .tooltip:hover::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1f2937;
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            white-space: nowrap;
-            z-index: 1000;
-        }
+  .btn-warning:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+  }
 
-        .section-header {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            border-left: 4px solid #667eea;
-        }
+  .tooltip {
+      position: relative;
+  }
 
-        .feature-badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            font-size: 11px;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-weight: 500;
-        }
-    </style>
+  .tooltip:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2937;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 1000;
+      margin-bottom: 5px;
+  }
+
+  .section-header {
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      border-left: 4px solid #667eea;
+      padding: 1rem;
+      border-radius: 12px;
+      margin-bottom: 1rem;
+  }
+
+  .feature-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-weight: 500;
+      display: inline-block;
+  }
+
+  /* Mobile Responsive Styles */
+  @media (max-width: 768px) {
+      body {
+          background-attachment: fixed;
+          -webkit-overflow-scrolling: touch;
+      }
+
+      .dashboard-bg {
+          margin: 0.25rem;
+          border-radius: 12px;
+      }
+
+      .card {
+          margin: 0.5rem;
+          padding: 0.75rem;
+          border-radius: 12px;
+      }
+
+      .card:hover {
+          transform: none; /* Disable hover transforms on mobile */
+      }
+
+      .stat-card::before {
+          width: 60px;
+          height: 60px;
+          transform: translate(15px, -15px);
+      }
+
+      .feed-entry {
+          padding: 0.75rem;
+          margin-bottom: 0.5rem;
+          border-radius: 8px;
+      }
+
+      .feed-entry:hover {
+          transform: none; /* Disable hover transforms on mobile */
+      }
+
+      .debug-log {
+          max-height: 200px;
+          padding: 0.75rem;
+          font-size: 11px;
+          border-radius: 8px;
+      }
+
+      .tab-button {
+          padding: 0.5rem 0.75rem;
+          font-size: 0.85rem;
+          text-align: center;
+          flex: 1;
+      }
+
+      .modal-content {
+          margin: 0.5rem;
+          max-width: calc(100vw - 1rem);
+          max-height: calc(100vh - 1rem);
+          border-radius: 12px;
+      }
+
+      .btn-primary,
+      .btn-danger,
+      .btn-warning {
+          padding: 0.875rem 1.25rem;
+          font-size: 0.9rem;
+          width: 100%;
+          margin-bottom: 0.5rem;
+      }
+
+      .btn-primary:hover,
+      .btn-danger:hover,
+      .btn-warning:hover {
+          transform: none; /* Disable hover transforms on mobile */
+      }
+
+      .tooltip:hover::after {
+          display: none; /* Hide tooltips on mobile */
+      }
+
+      .section-header {
+          padding: 0.75rem;
+          border-radius: 8px;
+          margin-bottom: 0.75rem;
+      }
+
+      .feature-badge {
+          font-size: 10px;
+          padding: 3px 6px;
+          border-radius: 8px;
+      }
+
+      .small {
+          font-size: 0.8rem;
+      }
+
+      /* Grid adjustments for mobile */
+      .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      .grid-cols-2 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      .grid-cols-3 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      /* Flex adjustments */
+      .flex-row { flex-direction: column; }
+      .space-x-4 > * + * { margin-left: 0; margin-top: 0.5rem; }
+      .space-x-2 > * + * { margin-left: 0; margin-top: 0.25rem; }
+
+      /* Text sizing for mobile */
+      h1 { font-size: 1.5rem; }
+      h2 { font-size: 1.25rem; }
+      h3 { font-size: 1.125rem; }
+      h4 { font-size: 1rem; }
+
+      /* Better touch targets */
+      button, .btn-primary, .btn-danger, .btn-warning {
+          min-height: 44px;
+          touch-action: manipulation;
+      }
+
+      .tab-button {
+          min-height: 44px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+      }
+  }
+
+  /* Tablet Responsive Styles */
+  @media (min-width: 769px) and (max-width: 1024px) {
+      .dashboard-bg {
+          margin: 0.75rem;
+      }
+
+      .card {
+          margin: 0.625rem;
+          padding: 0.875rem;
+      }
+
+      .grid-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      .debug-log {
+          max-height: 250px;
+          font-size: 11px;
+      }
+
+      .modal-content {
+          margin: 0.75rem;
+          max-width: calc(100vw - 1.5rem);
+          max-height: calc(100vh - 1.5rem);
+      }
+  }
+
+  /* Small Mobile Devices */
+  @media (max-width: 480px) {
+      .dashboard-bg {
+          margin: 0.125rem;
+          border-radius: 8px;
+      }
+
+      .card {
+          margin: 0.25rem;
+          padding: 0.5rem;
+          border-radius: 8px;
+      }
+
+      .feed-entry {
+          padding: 0.5rem;
+          border-radius: 6px;
+      }
+
+      .debug-log {
+          padding: 0.5rem;
+          font-size: 10px;
+          max-height: 150px;
+      }
+
+      .tab-button {
+          padding: 0.5rem 0.5rem;
+          font-size: 0.8rem;
+      }
+
+      .section-header {
+          padding: 0.5rem;
+          border-radius: 6px;
+      }
+
+      .modal-content {
+          margin: 0.25rem;
+          max-width: calc(100vw - 0.5rem);
+          max-height: calc(100vh - 0.5rem);
+          border-radius: 8px;
+      }
+
+      .btn-primary,
+      .btn-danger,
+      .btn-warning {
+          padding: 0.75rem 1rem;
+          font-size: 0.85rem;
+      }
+
+      h1 { font-size: 1.25rem; }
+      h2 { font-size: 1.125rem; }
+      h3 { font-size: 1rem; }
+      h4 { font-size: 0.9rem; }
+
+      .feature-badge {
+          font-size: 9px;
+          padding: 2px 5px;
+      }
+  }
+
+  /* Utility classes for responsive design */
+  .mobile-hidden {
+      display: block;
+  }
+
+  .mobile-only {
+      display: none;
+  }
+
+  @media (max-width: 768px) {
+      .mobile-hidden {
+          display: none !important;
+      }
+
+      .mobile-only {
+          display: block !important;
+      }
+
+      .mobile-flex {
+          display: flex !important;
+      }
+
+      .mobile-grid {
+          display: grid !important;
+      }
+
+      /* Mobile-specific spacing */
+      .mobile-p-2 { padding: 0.5rem !important; }
+      .mobile-p-3 { padding: 0.75rem !important; }
+      .mobile-p-4 { padding: 1rem !important; }
+
+      .mobile-m-1 { margin: 0.25rem !important; }
+      .mobile-m-2 { margin: 0.5rem !important; }
+      .mobile-m-3 { margin: 0.75rem !important; }
+
+      /* Mobile text sizes */
+      .mobile-text-xs { font-size: 0.75rem !important; }
+      .mobile-text-sm { font-size: 0.875rem !important; }
+      .mobile-text-base { font-size: 1rem !important; }
+      .mobile-text-lg { font-size: 1.125rem !important; }
+
+      /* Mobile grid adjustments */
+      .mobile-grid-1 { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+      .mobile-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  }
+
+  /* Touch-friendly interactions */
+  @media (hover: none) and (pointer: coarse) {
+      .card:hover,
+      .feed-entry:hover,
+      .btn-primary:hover,
+      .btn-danger:hover,
+      .btn-warning:hover {
+          transform: none;
+      }
+
+      .tooltip:hover::after {
+          display: none;
+      }
+  }
+
+  /* Landscape orientation on mobile */
+  @media (max-width: 768px) and (orientation: landscape) {
+      .modal-content {
+          max-height: calc(100vh - 1rem);
+      }
+
+      .debug-log {
+          max-height: 120px;
+      }
+  }
+
+  /* High DPI displays */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+      .dashboard-bg,
+      .card {
+          border-width: 0.5px;
+      }
+  } </style>
 </head>
 <body class="text-gray-800">
 
@@ -1184,382 +1510,550 @@
         closeModal('sensor-modal');
     };
 
-    /* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
-    function updateWsStatus(connected) {
-        const dot = document.getElementById('ws-status-dot');
-        const text = document.getElementById('ws-status-text');
-        const connectionStatus = document.getElementById('connection-status');
 
-        if (!dot || !text) return;
-        if (connected) {
-            dot.className = 'status-dot status-active';
-            text.textContent = 'Connected';
-            if (connectionStatus) connectionStatus.textContent = 'Connected';
-            if (connectionStatus) connectionStatus.className = 'font-medium text-green-600';
-        } else {
-            dot.className = 'status-dot status-error';
-            text.textContent = 'Disconnected';
-            if (connectionStatus) connectionStatus.textContent = 'Disconnected';
-            if (connectionStatus) connectionStatus.className = 'font-medium text-red-600';
-        }
+/* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
+function updateWsStatus(connected) {
+    const dot = document.getElementById('ws-status-dot');
+    const text = document.getElementById('ws-status-text');
+    const connectionStatus = document.getElementById('connection-status');
+
+    if (!dot || !text) return;
+    if (connected) {
+        dot.className = 'status-dot status-active';
+        text.textContent = 'Connected';
+        if (connectionStatus) connectionStatus.textContent = 'Connected';
+        if (connectionStatus) connectionStatus.className = 'font-medium text-green-600';
+    } else {
+        dot.className = 'status-dot status-error';
+        text.textContent = 'Disconnected';
+        if (connectionStatus) connectionStatus.textContent = 'Disconnected';
+        if (connectionStatus) connectionStatus.className = 'font-medium text-red-600';
+    }
+}
+
+function startFlushTimerIfNeeded() {
+  if (state.flushTimer) return;
+  state.flushTimer = setInterval(flushIncomingBuffer, FLUSH_INTERVAL_MS);
+}
+
+function stopFlushTimerIfEmpty() {
+  if (state.flushTimer && state.incomingBuffer.length === 0) {
+    clearInterval(state.flushTimer);
+    state.flushTimer = null;
+  }
+}
+
+function flushIncomingBuffer() {
+  const buf = state.incomingBuffer.splice(0, 1000); // take at most 1000 per flush
+  if (!buf || buf.length === 0) {
+    stopFlushTimerIfEmpty();
+    return;
+  }
+
+  // process buffered readings in batch
+  const chartPoints = [];
+  const feedEntries = [];
+  let anomaliesDelta = 0;
+  buf.forEach(reading => {
+    // ensure id and timestamp
+    const id = reading.id ?? state.nextSensorId++;
+    reading.id = id;
+    if (!reading.timestamp) reading.timestamp = new Date().toISOString();
+    state.sensorData.set(id, reading);
+    state.totalReadings++;
+    if (reading.anomaly) anomaliesDelta++;
+
+    // chart point if temperature
+    if (reading.sensorType === 'TEMPERATURE') {
+      chartPoints.push({x: new Date(reading.timestamp), y: parseFloat(reading.value)});
     }
 
-    function startFlushTimerIfNeeded() {
-      if (state.flushTimer) return;
-      state.flushTimer = setInterval(flushIncomingBuffer, FLUSH_INTERVAL_MS);
-    }
+    feedEntries.push(reading);
+  });
 
-    function stopFlushTimerIfEmpty() {
-      if (state.flushTimer && state.incomingBuffer.length === 0) {
-        clearInterval(state.flushTimer);
-        state.flushTimer = null;
+  state.anomalies += anomaliesDelta;
+  // update counters once
+  document.getElementById('total-readings-count').textContent = state.totalReadings;
+  document.getElementById('anomalies-count').textContent = state.anomalies;
+
+  // batch update chart and feed
+  if (chartPoints.length) batchPushChartPoints(chartPoints);
+  batchAddLiveFeedEntries(feedEntries);
+
+  // update tables
+  renderSensorDataTable();
+  renderAllSensorDataTable();
+}
+
+/* ---------------- Reliable Simulator Control + STOMP subscription ---------------- */
+
+// robust API base (fallback to local simulator host if API_BASE not set)
+const SIM_API_BASE = (typeof API_BASE !== 'undefined' && API_BASE) ? API_BASE.replace(/\/$/, '') : 'http://localhost:8083';
+console.log('[DEBUG] SIM_API_BASE =', SIM_API_BASE);
+
+// candidate status endpoints (tried in order)
+const STATUS_ENDPOINT_CANDIDATES = [
+  `${SIM_API_BASE}/simulator/status`,
+  `${SIM_API_BASE}/status`,
+  `${SIM_API_BASE}/api/simulator/status`
+];
+
+// candidate start endpoints (tried in order)
+const START_ENDPOINT_CANDIDATES = [
+  `${SIM_API_BASE}/simulator/startAll`,
+  `${SIM_API_BASE}/api/simulator/start`,
+  `${SIM_API_BASE}/api/simulator/startAll`,
+  `${SIM_API_BASE}/simulator/start`
+];
+
+// candidate stop endpoints (tried in order)
+const STOP_ENDPOINT_CANDIDATES = [
+  `${SIM_API_BASE}/simulator/stopAll`,
+  `${SIM_API_BASE}/api/simulator/stop`,
+  `${SIM_API_BASE}/api/simulator/stopAll`,
+  `${SIM_API_BASE}/simulator/stop`
+];
+
+// helper: probe status endpoint candidates and return {json, url} or throw
+async function probeStatusEndpoint() {
+  let lastErr = null;
+  for (const url of STATUS_ENDPOINT_CANDIDATES) {
+    try {
+      const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+      if (!res.ok) {
+        lastErr = new Error(`HTTP ${res.status} from ${url}`);
+        continue;
       }
+      const json = await res.json();
+      console.log('[DEBUG] status fetched from', url, json);
+      return { json, url };
+    } catch (e) {
+      lastErr = e;
+      console.warn('[DEBUG] status probe failed for', url, e);
+    }
+  }
+  throw lastErr || new Error('No status endpoint succeeded');
+}
+
+// core: sync UI with server status
+async function syncSimulatorStatus() {
+  try {
+    const { json } = await probeStatusEndpoint();
+    // support legacy { running } and modern { isRunning }
+    const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
+                       : (typeof json.running !== 'undefined') ? Boolean(json.running)
+                       : false;
+    const runningDeviceIds = json.runningDeviceIds || json.runningDevices || json.running || [];
+
+    state.isSimulatorRunning = isRunning;
+    const startBtn = document.getElementById('start-sim-btn');
+    const stopBtn = document.getElementById('stop-sim-btn');
+    const statusEl = document.getElementById('dash-sim-status');
+
+    if (isRunning) {
+      if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+      if (startBtn) startBtn.disabled = true;
+      if (stopBtn) stopBtn.disabled = false;
+    } else {
+      if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+      if (startBtn) startBtn.disabled = false;
+      if (stopBtn) stopBtn.disabled = true;
     }
 
-    function flushIncomingBuffer() {
-      const buf = state.incomingBuffer.splice(0, 1000); // take at most 1000 per flush
-      if (!buf || buf.length === 0) {
-        stopFlushTimerIfEmpty();
-        return;
+    debugLog('syncSimulatorStatus -> isRunning=' + isRunning + ' devices=' + (runningDeviceIds || []).join(', '));
+    return { isRunning, runningDeviceIds };
+  } catch (e) {
+    console.error('[DEBUG] syncSimulatorStatus failed', e);
+    // keep UI conservative (don't flip buttons aggressively)
+    return { isRunning: state.isSimulatorRunning, runningDeviceIds: [] };
+  }
+}
+
+// helper to call first-success endpoint from a candidates list
+async function callFirstSuccess(urls, options = {}) {
+  let lastErr = null;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) {
+        console.log('[DEBUG] callFirstSuccess ok ->', url, res.status);
+        return { res, url };
+      } else {
+        console.warn('[DEBUG] callFirstSuccess non-ok ->', url, res.status);
+        lastErr = new Error(`HTTP ${res.status} from ${url}`);
       }
-
-      // process buffered readings in batch
-      const chartPoints = [];
-      const feedEntries = [];
-      let anomaliesDelta = 0;
-      buf.forEach(reading => {
-        // ensure id and timestamp
-        const id = reading.id ?? state.nextSensorId++;
-        reading.id = id;
-        if (!reading.timestamp) reading.timestamp = new Date().toISOString();
-        state.sensorData.set(id, reading);
-        state.totalReadings++;
-        if (reading.anomaly) anomaliesDelta++;
-
-        // chart point if temperature
-        if (reading.sensorType === 'TEMPERATURE') {
-          chartPoints.push({x: new Date(reading.timestamp), y: parseFloat(reading.value)});
-        }
-
-        feedEntries.push(reading);
-      });
-
-      state.anomalies += anomaliesDelta;
-      // update counters once
-      document.getElementById('total-readings-count').textContent = state.totalReadings;
-      document.getElementById('anomalies-count').textContent = state.anomalies;
-
-      // batch update chart and feed
-      if (chartPoints.length) batchPushChartPoints(chartPoints);
-      batchAddLiveFeedEntries(feedEntries);
-
-      // update tables
-      renderSensorDataTable();
-      renderAllSensorDataTable();
+    } catch (e) {
+      console.warn('[DEBUG] callFirstSuccess failed ->', url, e);
+      lastErr = e;
     }
+  }
+  throw lastErr || new Error('All calls failed');
+}
 
-    /* WebSocket connect */
-    function connectWebSocket() {
-        debugLog('Attempting WebSocket connection...');
-        try {
-            const socketFactory = () => new SockJS(WEBSOCKET_URL);
-            state.stompClient = new StompJs.Client({
-                webSocketFactory: socketFactory,
-                reconnectDelay: 5000,
-                heartbeatIncoming: 4000,
-                heartbeatOutgoing: 4000
-            });
-
-            state.stompClient.onConnect = (frame) => {
-                debugLog('WebSocket connected');
-                updateWsStatus(true);
-                toast('WebSocket connected successfully');
-
-                // sensor-data subscription: push to buffer, not DOM
-                state.stompClient.subscribe('/topic/sensor-data', (message) => {
-                    try {
-                        const reading = JSON.parse(message.body);
-                        // push to incoming buffer
-                        state.incomingBuffer.push(reading);
-                        startFlushTimerIfNeeded();
-                    } catch (e) {
-                        debugLog('Error parsing sensor message: ' + (e.message||e));
-                    }
-                });
-
-                // device-status subscription: applies directly (low volume)
-                state.stompClient.subscribe('/topic/device-status', (message) => {
-                    try {
-                        const deviceUpdate = JSON.parse(message.body);
-                        debugLog(`Device status update: ${deviceUpdate.deviceId} - ${deviceUpdate.status}`);
-                        const key = Number(deviceUpdate.deviceId);
-                        const device = state.devices.get(key);
-                        if (device) {
-                            device.status = deviceUpdate.status;
-                            state.devices.set(key, device);
-                            renderDevicesTable();
-                        }
-                    } catch (e) {
-                        debugLog('Error processing device status: ' + (e.message||e));
-                    }
-                });
-            };
-
-            state.stompClient.onStompError = (frame) => {
-                debugLog('STOMP error: ' + (frame && frame.headers ? frame.headers['message'] : JSON.stringify(frame)));
-                updateWsStatus(false);
-                toast('WebSocket error occurred', true);
-            };
-
-            state.stompClient.onDisconnect = () => {
-                debugLog('WebSocket disconnected');
-                updateWsStatus(false);
-            };
-
-            state.stompClient.activate();
-        } catch (e) {
-            debugLog('Failed to connect WebSocket: ' + (e.message||e));
-            updateWsStatus(false);
-            toast('WebSocket connection failed', true);
-        }
+// After start/stop, poll status endpoint up to N times to confirm server state (helps with race)
+async function waitForStatusConfirm(desiredRunning, maxTries = 8, intervalMs = 400) {
+  for (let i = 0; i < maxTries; i++) {
+    try {
+      const { json } = await probeStatusEndpoint();
+      const isRunning = (typeof json.isRunning !== 'undefined') ? Boolean(json.isRunning)
+                         : (typeof json.running !== 'undefined') ? Boolean(json.running) : false;
+      if (isRunning === desiredRunning) {
+        // update UI once confirmed
+        await syncSimulatorStatus();
+        return true;
+      }
+    } catch (e) {
+      // ignore and retry
     }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  // final attempt to sync UI anyway
+  await syncSimulatorStatus();
+  return false;
+}
 
-    /* ---------------- Enhanced Simulator Controls ---------------- */
-    async function startSimulator() {
-        try {
-            debugLog('Starting simulator...');
-            const res = await fetch(`${API_BASE}/admin/simulator/start`, { method: 'POST' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            state.isSimulatorRunning = true;
-            const startBtn = document.getElementById('start-sim-btn');
-            const stopBtn = document.getElementById('stop-sim-btn');
-            if (startBtn) startBtn.disabled = true;
-            if (stopBtn) stopBtn.disabled = false;
-            const statusEl = document.getElementById('dash-sim-status');
-            if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
-            toast('Simulator started successfully');
-            debugLog('Simulator started successfully');
-        } catch (e) {
-            debugLog('Failed to start simulator: ' + (e.message||e));
-            // fallback to local UI state so admin isn't locked out
-            state.isSimulatorRunning = true;
-            const startBtn = document.getElementById('start-sim-btn');
-            const stopBtn = document.getElementById('stop-sim-btn');
-            if (startBtn) startBtn.disabled = true;
-            if (stopBtn) stopBtn.disabled = false;
-            const statusEl = document.getElementById('dash-sim-status');
-            if (statusEl) statusEl.innerHTML = '🟡 <strong>Simulator running (local)</strong>';
-            toast('Simulator started (local fallback)');
-        }
+// Start simulator (robust, idempotent)
+async function startSimulator() {
+  const startBtn = document.getElementById('start-sim-btn');
+  const stopBtn = document.getElementById('stop-sim-btn');
+  const statusEl = document.getElementById('dash-sim-status');
+
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
+
+  try {
+    debugLog('Starting simulator (robust)...');
+    await callFirstSuccess(START_ENDPOINT_CANDIDATES, { method: 'POST' });
+
+    // optimistic UI while waiting for server confirm
+    state.isSimulatorRunning = true;
+    if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+
+    // confirm server state (poll)
+    const confirmed = await waitForStatusConfirm(true);
+    if (!confirmed) {
+      toast('Started request sent but server did not confirm; check logs', true);
+    } else {
+      toast('Simulator started successfully');
     }
+    debugLog('Start sequence finished, confirmed=' + confirmed);
+  } catch (e) {
+    debugLog('Failed to start simulator: ' + (e.message || e));
+    toast('Failed to start simulator', true);
+    // restore conservative state by re-syncing
+    await syncSimulatorStatus();
+  } finally {
+    if (startBtn && !state.isSimulatorRunning) startBtn.disabled = false;
+  }
+}
 
-    async function stopSimulator() {
-        const startBtn = document.getElementById('start-sim-btn');
-        const stopBtn = document.getElementById('stop-sim-btn');
-        try {
-            debugLog('Stopping simulator...');
-            const res = await fetch(`${API_BASE}/admin/simulator/stop`, { method: 'POST' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            state.isSimulatorRunning = false;
-            if (startBtn) startBtn.disabled = false;
-            if (stopBtn) stopBtn.disabled = true;
-            const statusEl = document.getElementById('dash-sim-status');
-            if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
-            toast('Simulator stopped successfully');
-            debugLog('Simulator stopped successfully');
-        } catch (e) {
-            debugLog('Failed to stop simulator (server err): ' + (e.message||e));
-            // IMPORTANT: update the UI even when the server call fails to avoid a non-responsive Stop button
-            state.isSimulatorRunning = false;
-            if (startBtn) startBtn.disabled = false;
-            if (stopBtn) stopBtn.disabled = true;
-            const statusEl = document.getElementById('dash-sim-status');
-            if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped (local)</strong>';
-            toast('Simulator stopped (local fallback)');
-        }
+// Stop simulator (robust, idempotent)
+async function stopSimulator() {
+  const startBtn = document.getElementById('start-sim-btn');
+  const stopBtn = document.getElementById('stop-sim-btn');
+  const statusEl = document.getElementById('dash-sim-status');
+
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
+
+  try {
+    debugLog('Stopping simulator (robust)...');
+    await callFirstSuccess(STOP_ENDPOINT_CANDIDATES, { method: 'POST' });
+
+    // optimistic UI
+    state.isSimulatorRunning = false;
+    if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+
+    // confirm server state
+    const confirmed = await waitForStatusConfirm(false);
+    if (!confirmed) {
+      toast('Stop request sent but server did not confirm; check logs', true);
+    } else {
+      toast('Simulator stopped successfully');
     }
+    debugLog('Stop sequence finished, confirmed=' + confirmed);
+  } catch (e) {
+    debugLog('Failed to stop simulator: ' + (e.message || e));
+    toast('Failed to stop simulator', true);
+    // restore conservative state
+    await syncSimulatorStatus();
+  } finally {
+    if (stopBtn && state.isSimulatorRunning) stopBtn.disabled = false;
+  }
+}
 
-    async function clearAllData() {
-        if (!confirm('Clear all sensor data and reset counters? This action cannot be undone.')) return;
+/* ---------------- STOMP subscription helpers ---------------- */
 
-        try {
-            debugLog('Clearing all data...');
-            const res = await fetch(`${API_BASE}/sensor/clear`, { method: 'DELETE' });
-            if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+// Single normalized handler for control messages
+function handleSimulatorControlMessage(body) {
+  const running = (typeof body.isRunning !== 'undefined') ? Boolean(body.isRunning)
+               : (typeof body.running !== 'undefined') ? Boolean(body.running)
+               : false;
+  const startBtn = document.getElementById('start-sim-btn');
+  const stopBtn = document.getElementById('stop-sim-btn');
+  const statusEl = document.getElementById('dash-sim-status');
 
-            state.sensorData.clear();
-            state.totalReadings = 0;
-            state.anomalies = 0;
+  state.isSimulatorRunning = running;
+  if (running) {
+    if (statusEl) statusEl.innerHTML = '🟢 <strong>Simulator running</strong>';
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+  } else {
+    if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+  }
+  debugLog('handleSimulatorControlMessage -> running=' + running + ' body=' + JSON.stringify(body));
+}
 
-            document.getElementById('total-readings-count').textContent = 0;
-            document.getElementById('anomalies-count').textContent = 0;
-
-            renderSensorDataTable();
-            renderAllSensorDataTable();
-
-            if (state.chart) {
-                state.chart.data.datasets[0].data = [];
-                state.chart.update();
-            }
-
-            document.getElementById('live-feed').innerHTML = '';
-            toast('All data cleared successfully');
-            debugLog('Data cleared successfully');
-        } catch (e) {
-            debugLog('Failed to clear data: ' + (e.message||e));
-            // Fallback to local clear
-            state.sensorData.clear();
-            state.totalReadings = 0;
-            state.anomalies = 0;
-
-            document.getElementById('total-readings-count').textContent = 0;
-            document.getElementById('anomalies-count').textContent = 0;
-
-            renderSensorDataTable();
-            renderAllSensorDataTable();
-
-            if (state.chart) {
-                state.chart.data.datasets[0].data = [];
-                state.chart.update();
-            }
-
-            document.getElementById('live-feed').innerHTML = '';
-            toast('Data cleared (local)');
-        }
+// Subscribe to multiple possible topics and normalize messages (call after STOMP connect)
+function subscribeSimulatorControl() {
+  try {
+    if (!state.stompClient || typeof state.stompClient.subscribe !== 'function') {
+      debugLog('subscribeSimulatorControl: stompClient not ready');
+      return;
     }
-
-    async function controlDevice(action, deviceIdParam=null) {
-        const valueFromInput = deviceIdParam ?? document.getElementById('device-id-input')?.value;
-        const deviceId = valueFromInput ? String(valueFromInput).trim() : '';
-        if (!deviceId) {
-            toast('Please enter a device ID', true);
-            return;
-        }
-
-        try {
-            debugLog(`${action} device ${deviceId}...`);
-            const endpoint = action === 'disconnect' ? 'disconnect' :
-                           action === 'reconnect' ? 'reconnect' : 'inject-anomaly';
-
-            const res = await fetch(`${API_BASE}/admin/simulator/${endpoint}/${deviceId}`, { method: 'POST' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            toast(`Device ${deviceId}: ${action} successful`);
-            debugLog(`Device ${deviceId}: ${action} completed`);
-        } catch (e) {
-            debugLog(`Failed to ${action} device: ` + (e.message||e));
-            toast(`Failed to ${action} device`, true);
-        }
+    // avoid double subs
+    if (state.__simControlSubs) {
+      debugLog('subscribeSimulatorControl: already subscribed');
+      return;
     }
+    state.__simControlSubs = [];
 
-    /* ---------------- Enhanced Tabs & UI wiring ---------------- */
-    function showTab(tabName) {
-        const tabs = ['dashboard', 'devices', 'sensors', 'debug'];
-        tabs.forEach(t => {
-            const tab = document.getElementById(`${t}-tab`);
-            const btn = document.querySelector(`[onclick="showTab('${t}')"]`);
-            if (t === tabName) {
-                tab.classList.remove('hidden');
-                btn.classList.add('active');
-                btn.classList.remove('text-gray-500');
-            } else {
-                tab.classList.add('hidden');
-                btn.classList.remove('active');
-                btn.classList.add('text-gray-500');
-            }
+    const topics = ['/topic/simulator-control', '/topic/simulator-status', '/topic/sim-control'];
+    topics.forEach(topic => {
+      try {
+        const sub = state.stompClient.subscribe(topic, (message) => {
+          try {
+            console.log('[DEBUG] raw control msg from', topic, message);
+            const body = message && message.body ? JSON.parse(message.body) : message;
+            handleSimulatorControlMessage(body);
+          } catch (e) {
+            console.warn('[DEBUG] failed parse control msg from', topic, e);
+          }
         });
-    }
-
-    /* ---------------- Event Listeners ---------------- */
-    document.addEventListener('DOMContentLoaded', () => {
-        initChart();
-        loadDevices();
-        loadSensors();
-        connectWebSocket();
-
-        document.getElementById('device-form') && document.getElementById('device-form').addEventListener('submit', onDeviceFormSubmit);
-        document.getElementById('sensor-form') && document.getElementById('sensor-form').addEventListener('submit', onSensorFormSubmit);
-
-        document.getElementById('add-device-btn') && document.getElementById('add-device-btn').addEventListener('click', () => openDeviceModal());
-        document.getElementById('add-sensor-btn') && document.getElementById('add-sensor-btn').addEventListener('click', () => openSensorModal());
-
-        document.querySelectorAll('.cancel-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const modal = e.target.closest('.fixed');
-                if (modal) modal.classList.add('hidden');
-            });
-        });
-
-        // Admin simulator (dashboard)
-        const startBtn = document.getElementById('start-sim-btn');
-        const stopBtn = document.getElementById('stop-sim-btn');
-        const clearBtn = document.getElementById('clear-data-btn');
-        if (startBtn) startBtn.addEventListener('click', startSimulator);
-        if (stopBtn) stopBtn.addEventListener('click', stopSimulator);
-        if (clearBtn) clearBtn.addEventListener('click', clearAllData);
-
-        document.getElementById('clear-log-btn') && document.getElementById('clear-log-btn').addEventListener('click', () => {
-            if (debugLogEl) debugLogEl.innerHTML = '';
-            state.debugLines = [];
-            debugLog('Debug log cleared by user');
-        });
-
-        document.getElementById('sensor-type-filter') && document.getElementById('sensor-type-filter').addEventListener('change', renderSensorDataTable);
-
-        debugLog('Modern IoT Dashboard initialized successfully');
+        state.__simControlSubs.push({ topic, sub });
+        debugLog('Subscribed to ' + topic);
+      } catch (e) {
+        console.warn('subscribe failed for', topic, e);
+      }
     });
-    async function stopSimulator() {
+  } catch (e) {
+    console.error('subscribeSimulatorControl error', e);
+  }
+}
+
+// Called on disconnect/shutdown to cleanup subs
+function unsubscribeSimulatorControl() {
+  if (!state.__simControlSubs) return;
+  state.__simControlSubs.forEach(s => {
+    try { if (s.sub && typeof s.sub.unsubscribe === 'function') s.sub.unsubscribe(); } catch(e){}
+  });
+  state.__simControlSubs = null;
+}
+
+/* WebSocket connect */
+function connectWebSocket() {
+    debugLog('Attempting WebSocket connection...');
+    try {
+        const socketFactory = () => new SockJS(WEBSOCKET_URL);
+        state.stompClient = new StompJs.Client({
+            webSocketFactory: socketFactory,
+            reconnectDelay: 5000,
+            heartbeatIncoming: 4000,
+            heartbeatOutgoing: 4000
+        });
+
+        state.stompClient.onConnect = (frame) => {
+            debugLog('WebSocket connected');
+            updateWsStatus(true);
+            toast('WebSocket connected successfully');
+
+            // ensure UI reflects server auto-start immediately
+            syncSimulatorStatus().catch(()=>{});
+
+            // sensor-data subscription: push to buffer, not DOM
+            state.stompClient.subscribe('/topic/sensor-data', (message) => {
+                try {
+                    const reading = JSON.parse(message.body);
+                    // push to incoming buffer
+                    state.incomingBuffer.push(reading);
+                    startFlushTimerIfNeeded();
+                } catch (e) {
+                    debugLog('Error parsing sensor message: ' + (e.message||e));
+                }
+            });
+
+            // device-status subscription: applies directly (low volume)
+            state.stompClient.subscribe('/topic/device-status', (message) => {
+                try {
+                    const deviceUpdate = JSON.parse(message.body);
+                    debugLog(`Device status update: ${deviceUpdate.deviceId} - ${deviceUpdate.status}`);
+                    const key = Number(deviceUpdate.deviceId);
+                    const device = state.devices.get(key);
+                    if (device) {
+                        device.status = deviceUpdate.status;
+                        state.devices.set(key, device);
+                        renderDevicesTable();
+                    }
+                } catch (e) {
+                    debugLog('Error processing device status: ' + (e.message||e));
+                }
+            });
+
+            // subscribe to control topics (keeps UI synced to server auto-start)
+            subscribeSimulatorControl();
+        };
+
+        state.stompClient.onStompError = (frame) => {
+            debugLog('STOMP error: ' + (frame && frame.headers ? frame.headers['message'] : JSON.stringify(frame)));
+            updateWsStatus(false);
+            toast('WebSocket error occurred', true);
+        };
+
+        state.stompClient.onDisconnect = () => {
+            debugLog('WebSocket disconnected');
+            updateWsStatus(false);
+            unsubscribeSimulatorControl();
+        };
+
+        state.stompClient.activate();
+    } catch (e) {
+        debugLog('Failed to connect WebSocket: ' + (e.message||e));
+        updateWsStatus(false);
+        toast('WebSocket connection failed', true);
+    }
+}
+
+/* ---------------- Other Controls ---------------- */
+async function clearAllData() {
+    if (!confirm('Clear all sensor data and reset counters? This action cannot be undone.')) return;
+
+    try {
+        debugLog('Clearing all data...');
+        const res = await fetch(`${API_BASE}/sensor/clear`, { method: 'DELETE' });
+        if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
+
+        state.sensorData.clear();
+        state.totalReadings = 0;
+        state.anomalies = 0;
+
+        document.getElementById('total-readings-count').textContent = 0;
+        document.getElementById('anomalies-count').textContent = 0;
+
+        renderSensorDataTable();
+        renderAllSensorDataTable();
+
+        if (state.chart) {
+            state.chart.data.datasets[0].data = [];
+            state.chart.update();
+        }
+
+        document.getElementById('live-feed').innerHTML = '';
+        toast('All data cleared successfully');
+        debugLog('Data cleared successfully');
+    } catch (e) {
+        debugLog('Failed to clear data: ' + (e.message||e));
+        // fallback local reset
+        state.sensorData.clear();
+        state.totalReadings = 0;
+        state.anomalies = 0;
+
+        document.getElementById('total-readings-count').textContent = 0;
+        document.getElementById('anomalies-count').textContent = 0;
+
+        renderSensorDataTable();
+        renderAllSensorDataTable();
+
+        if (state.chart) {
+            state.chart.data.datasets[0].data = [];
+            state.chart.update();
+        }
+
+        document.getElementById('live-feed').innerHTML = '';
+        toast('Data cleared (local)');
+    }
+}
+
+async function controlDevice(action, deviceIdParam=null) {
+    const valueFromInput = deviceIdParam ?? document.getElementById('device-id-input')?.value;
+    const deviceId = valueFromInput ? String(valueFromInput).trim() : '';
+    if (!deviceId) {
+        toast('Please enter a device ID', true);
+        return;
+    }
+
+    try {
+        debugLog(`${action} device ${deviceId}...`);
+        const endpoint = action === 'disconnect' ? 'disconnect' :
+                       action === 'reconnect' ? 'reconnect' : 'inject-anomaly';
+
+        const res = await fetch(`${API_BASE}/admin/simulator/${endpoint}/${deviceId}`, { method: 'POST' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        toast(`Device ${deviceId}: ${action} successful`);
+        debugLog(`Device ${deviceId}: ${action} completed`);
+    } catch (e) {
+        debugLog(`Failed to ${action} device: ` + (e.message||e));
+        toast(`Failed to ${action} device`, true);
+    }
+}
+
+/* ---------------- Event Listeners ---------------- */
+document.addEventListener('DOMContentLoaded', () => {
+    initChart();
+    loadDevices();
+    loadSensors();
+    connectWebSocket();
+
+    // ensure UI reflects server auto-start immediately
+    syncSimulatorStatus().catch(()=>{});
+
+    // forms
+    document.getElementById('device-form')?.addEventListener('submit', onDeviceFormSubmit);
+    document.getElementById('sensor-form')?.addEventListener('submit', onSensorFormSubmit);
+
+    // modals
+    document.querySelectorAll('.cancel-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const modal = e.target.closest('.fixed');
+            if (modal) modal.classList.add('hidden');
+        });
+    });
+
+    // simulator buttons - remove any existing listeners to avoid duplication
     const startBtn = document.getElementById('start-sim-btn');
     const stopBtn = document.getElementById('stop-sim-btn');
 
-    try {
-        debugLog('Stopping simulator...');
-
-        // First, stop the local flush timer to prevent buffered data from showing
-        if (state.flushTimer) {
-            clearInterval(state.flushTimer);
-            state.flushTimer = null;
-        }
-
-        // Clear any remaining buffer
-        state.incomingBuffer = [];
-
-        const res = await fetch(`${API_BASE}/admin/simulator/stop`, { method: 'POST' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        // Wait a moment for the server to fully stop
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        state.isSimulatorRunning = false;
-        if (startBtn) startBtn.disabled = false;
-        if (stopBtn) stopBtn.disabled = true;
-
-        const statusEl = document.getElementById('dash-sim-status');
-        if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped</strong>';
-
-        toast('Simulator stopped successfully');
-        debugLog('Simulator stopped successfully');
-
-    } catch (e) {
-        debugLog('Failed to stop simulator (server err): ' + (e.message||e));
-
-        // IMPORTANT: Still stop local processing even if server call fails
-        if (state.flushTimer) {
-            clearInterval(state.flushTimer);
-            state.flushTimer = null;
-        }
-        state.incomingBuffer = [];
-        state.isSimulatorRunning = false;
-
-        if (startBtn) startBtn.disabled = false;
-        if (stopBtn) stopBtn.disabled = true;
-
-        const statusEl = document.getElementById('dash-sim-status');
-        if (statusEl) statusEl.innerHTML = '🔴 <strong>Simulator stopped (local)</strong>';
-
-        toast('Simulator stopped (local fallback)');
+    if (startBtn) {
+        startBtn.removeEventListener('click', startSimulator);
+        startBtn.addEventListener('click', startSimulator);
     }
-}
+    if (stopBtn) {
+        stopBtn.removeEventListener('click', stopSimulator);
+        stopBtn.addEventListener('click', stopSimulator);
+    }
+
+    document.getElementById('clear-data-btn')?.addEventListener('click', clearAllData);
+
+    // logs
+    document.getElementById('clear-log-btn')?.addEventListener('click', () => {
+        if (debugLogEl) debugLogEl.innerHTML = '';
+        state.debugLines = [];
+        debugLog('Debug log cleared by user');
+    });
+
+    // filters
+    document.getElementById('sensor-type-filter')?.addEventListener('change', renderSensorDataTable);
+
+    debugLog('Modern IoT Dashboard initialized successfully');
+});
 </script>
+
+
 </body>
 </html>

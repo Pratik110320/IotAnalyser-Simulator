@@ -3,6 +3,7 @@ package com.pratik.IotAnalyser.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.pratik.IotAnalyser.simulator.SensorWebSocketHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.converter.MappingJackson2MessageConverter;
 import org.springframework.messaging.converter.MessageConverter;
@@ -12,10 +13,25 @@ import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
 
 import java.util.List;
-
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry registry) {
+        // Frontend will subscribe to /topic/*
+        registry.enableSimpleBroker("/topic");
+        // Client sends to /app/*
+        registry.setApplicationDestinationPrefixes("/app");
+    }
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // One STOMP endpoint for both simulator + frontend
+        registry.addEndpoint("/ws-sensor-data")
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
+    }
 
     @Override
     public boolean configureMessageConverters(List<MessageConverter> messageConverters) {
@@ -28,19 +44,6 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
         messageConverters.add(converter);
 
-        // Returning false means “use default message converters too”
-        return false;
-    }
-    @Override
-    public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic");
-        registry.setApplicationDestinationPrefixes("/app");
-    }
-
-    @Override
-    public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("/ws-sensor-data")
-                .setAllowedOriginPatterns("*")
-                .withSockJS();
+        return false; // keep default converters too
     }
 }

@@ -621,9 +621,9 @@
                 <button onclick="showTab('sensors')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">
                     📡 Sensors
                 </button>
-                <button onclick="showTab('debug')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">
-                    🐛 Debug
-                </button>
+<!--                <button onclick="showTab('debug')" class="tab-button flex-1 py-3 px-4 text-sm font-medium text-gray-500 rounded-lg transition-all duration-300">-->
+<!--                    🐛 Debug-->
+<!--                </button>-->
             </nav>
         </div>
 
@@ -826,28 +826,28 @@
                 </div>
             </section>
 
-            <!-- Enhanced Debug Section -->
-            <section id="debug-tab" class="hidden space-y-6">
-                <div class="card p-6">
-                    <div class="section-header rounded-lg p-4 mb-6">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <h2 class="text-xl font-bold text-gray-800 mb-1">🐛 System Debug Console</h2>
-                                <p class="text-sm text-gray-600">Real-time system logs and debugging information</p>
-                            </div>
-                            <button id="clear-log-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">
-                                🗑️ Clear Log
-                            </button>
-                        </div>
-                    </div>
-                    <div id="debug-log" class="debug-log"></div>
-                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p class="text-xs text-yellow-800">
-                            💡 Debug console shows WebSocket connections, API calls, errors, and system events in real-time
-                        </p>
-                    </div>
-                </div>
-            </section>
+<!--            &lt;!&ndash; Enhanced Debug Section &ndash;&gt;-->
+<!--            <section id="debug-tab" class="hidden space-y-6">-->
+<!--                <div class="card p-6">-->
+<!--                    <div class="section-header rounded-lg p-4 mb-6">-->
+<!--                        <div class="flex justify-between items-center">-->
+<!--                            <div>-->
+<!--                                <h2 class="text-xl font-bold text-gray-800 mb-1">🐛 System Debug Console</h2>-->
+<!--                                <p class="text-sm text-gray-600">Real-time system logs and debugging information</p>-->
+<!--                            </div>-->
+<!--                            <button id="clear-log-btn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300">-->
+<!--                                🗑️ Clear Log-->
+<!--                            </button>-->
+<!--                        </div>-->
+<!--                    </div>-->
+<!--                    <div id="debug-log" class="debug-log"></div>-->
+<!--                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">-->
+<!--                        <p class="text-xs text-yellow-800">-->
+<!--                            💡 Debug console shows WebSocket connections, API calls, errors, and system events in real-time-->
+<!--                        </p>-->
+<!--                    </div>-->
+<!--                </div>-->
+<!--            </section>-->
         </main>
     </div>
 </div>
@@ -1354,71 +1354,59 @@
 
           window.deleteDevice = deleteDevice;
 
-          const onDeviceFormSubmit = async (e) => {
-              e.preventDefault();
-              const idRaw = document.getElementById('device-id-field').value;
-              const id = idRaw ? Number(idRaw) : null;
-              const payload = {
-                  deviceName: document.getElementById('device-name').value,
-                  deviceType: document.getElementById('device-type').value
-              };
-              const status = document.getElementById('device-status').value;
-              const location = document.getElementById('device-location').value;
+      const onDeviceFormSubmit = async (e) => {
+    e.preventDefault();
+    const idRaw = document.getElementById('device-id-field').value;
+    const id = idRaw ? Number(idRaw) : null;
+    const payload = {
+        deviceName: document.getElementById('device-name').value,
+        deviceType: document.getElementById('device-type').value,
+        status: document.getElementById('device-status').value,
+        location: document.getElementById('device-location').value
+    };
 
-              if (id) {
-                  try {
-                      const res = await fetch(`${API_BASE}/device/${id}`, {
-                          method: 'PUT',
-                          headers: {'Content-Type':'application/json'},
-                          body: JSON.stringify({...payload, status})
-                      });
-                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                      const existing = state.devices.get(id) || {};
-                      state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
-                      toast('Device updated successfully');
-                  } catch (e) {
-                      debugLog('Failed to update device via API: '+(e.message||e));
-                      const existing = state.devices.get(id) || {};
-                      state.devices.set(id, {...existing, ...payload, status, location, deviceId: id});
-                      toast('Device updated (local)');
-                  }
-              } else {
-                  try {
-                      const res = await fetch(`${API_BASE}/device`, {
-                          method: 'POST',
-                          headers: {'Content-Type':'application/json'},
-                          body: JSON.stringify(payload)
-                      });
-                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                      const created = await res.json();
-                      const newId = Number(created.deviceId ?? created.id ?? (Math.max(0, ...Array.from(state.devices.keys())) + 1));
-                      const deviceObj = {
-                        deviceId: newId,
-                        ...created,
-                        deviceName: created.deviceName ?? payload.deviceName,
-                        deviceType: created.deviceType ?? payload.deviceType,
-                        registeredAt: created.registeredAt ?? new Date().toISOString(),
-                        status: created.status ?? 'ACTIVE',
-                        location
-                      };
-                      state.devices.set(newId, deviceObj);
-                      toast('Device created successfully');
-                  } catch (e) {
-                      debugLog('Failed to create device via API: '+(e.message||e));
-                      const newId = Math.max(0, ...Array.from(state.devices.keys())) + 1;
-                      state.devices.set(newId, {
-                          id: newId, deviceId: newId,
-                          deviceName: payload.deviceName, deviceType: payload.deviceType,
-                          status: status || 'ACTIVE', location,
-                          registeredAt: new Date().toISOString()
-                      });
-                      toast('Device created (local)');
-                  }
-              }
+    if (id) {
+        // UPDATE
+        try {
+            const res = await fetch(`${API_BASE}/device/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const existing = state.devices.get(id) || {};
+            state.devices.set(id, {...existing, ...payload, deviceId: id});
+            toast('Device updated successfully');
+        } catch (e) {
+            debugLog('Failed to update device: '+(e.message||e));
+            const existing = state.devices.get(id) || {};
+            state.devices.set(id, {...existing, ...payload, deviceId: id});
+            toast('Device updated (local)');
+        }
+    } else {
+        // CREATE
+        try {
+            const res = await fetch(`${API_BASE}/device`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const created = await res.json();
+            const newId = Number(created.deviceId ?? created.id ?? (Math.max(0, ...Array.from(state.devices.keys())) + 1));
+            state.devices.set(newId, {...created, ...payload, deviceId: newId});
+            toast('Device created successfully');
+        } catch (e) {
+            debugLog('Failed to create device: '+(e.message||e));
+            const newId = Math.max(0, ...Array.from(state.devices.keys())) + 1;
+            state.devices.set(newId, {...payload, deviceId: newId, registeredAt: new Date().toISOString()});
+            toast('Device created (local)');
+        }
+    }
 
-              renderDevicesTable();
-              closeModal('device-modal');
-          };
+    renderDevicesTable();
+    closeModal('device-modal');
+};
 
           /* ---------------- Sensors CRUD ---------------- */
           async function loadSensors(){
@@ -1476,46 +1464,67 @@
 
           window.deleteSensorData = deleteSensorData;
 
-          const onSensorFormSubmit = (e) => {
-              e.preventDefault();
-              const idRaw = document.getElementById('sensor-id-field').value;
-              const id = idRaw ? parseInt(idRaw) : null;
-              const sensorData = {
-                  deviceId: parseInt(document.getElementById('sensor-device-id').value),
-                  sensorType: document.getElementById('sensor-type').value,
-                  value: parseFloat(document.getElementById('sensor-value').value),
-                  anomaly: document.getElementById('sensor-anomaly').value === 'true',
-                  timestamp: new Date().toISOString()
-              };
+       const onSensorFormSubmit = async (e) => {
+    e.preventDefault();
+    const idRaw = document.getElementById('sensor-id-field').value;
+    const id = idRaw ? parseInt(idRaw) : null;
+    const payload = {
+        deviceId: parseInt(document.getElementById('sensor-device-id').value),
+        sensorType: document.getElementById('sensor-type').value,
+        value: parseFloat(document.getElementById('sensor-value').value),
+        anomaly: document.getElementById('sensor-anomaly').value === 'true',
+        timestamp: new Date().toISOString()
+    };
 
-              if (id) {
-                  debugLog(`Updating sensor reading ${id}`);
-                  const existing = state.sensorData.get(id);
-                  state.sensorData.set(id, { ...existing, ...sensorData, id });
-                  toast('Sensor reading updated');
-              } else {
-                  debugLog(`Creating new sensor reading`);
-                  const newId = state.nextSensorId++;
-                  state.sensorData.set(newId, {
-                      id: newId,
-                      ...sensorData
-                  });
-                  state.totalReadings++;
-                  if (sensorData.anomaly) state.anomalies++;
+    if (id) {
+        // UPDATE
+        try {
+            const res = await fetch(`${API_BASE}/sensor/${id}`, {
+                method: 'PUT',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const existing = state.sensorData.get(id);
+            state.sensorData.set(id, {...existing, ...payload, id});
+            toast('Sensor reading updated');
+        } catch (e) {
+            debugLog('Failed to update sensor: '+(e.message||e));
+            const existing = state.sensorData.get(id);
+            state.sensorData.set(id, {...existing, ...payload, id});
+            toast('Sensor updated (local)');
+        }
+    } else {
+        // CREATE
+        try {
+            const res = await fetch(`${API_BASE}/sensor`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const created = await res.json();
+            const newId = created.id ?? state.nextSensorId++;
+            state.sensorData.set(newId, {...created, ...payload, id: newId});
+            toast('Sensor reading created successfully');
+        } catch (e) {
+            debugLog('Failed to create sensor: '+(e.message||e));
+            const newId = state.nextSensorId++;
+            state.sensorData.set(newId, {...payload, id: newId});
+            toast('Sensor created (local)');
+        }
+        state.totalReadings++;
+        if (payload.anomaly) state.anomalies++;
+        document.getElementById('total-readings-count').textContent = state.totalReadings;
+        document.getElementById('anomalies-count').textContent = state.anomalies;
+        updateChart(payload);
+        batchAddLiveFeedEntries([payload]);
+    }
 
-                  document.getElementById('total-readings-count').textContent = state.totalReadings;
-                  document.getElementById('anomalies-count').textContent = state.anomalies;
-
-                  // small immediate UI update
-                  updateChart(sensorData);
-                  batchAddLiveFeedEntries([sensorData]);
-                  toast('Sensor reading created');
-              }
-
-              renderSensorDataTable();
-              renderAllSensorDataTable();
-              closeModal('sensor-modal');
-          };
+    renderSensorDataTable();
+    renderAllSensorDataTable();
+    closeModal('sensor-modal');
+};
 
 
       /* ---------------- Enhanced WebSocket Connection (buffered) ---------------- */
@@ -2061,7 +2070,57 @@ async function connectWebSocket() {
           document.getElementById('sensor-type-filter')?.addEventListener('change', renderSensorDataTable);
 
           debugLog('Modern IoT Dashboard initialized successfully');
+
+           // ---------- Device Modal ----------
+    const addDeviceBtn = document.getElementById('add-device-btn');
+    const deviceModal = document.getElementById('device-modal');
+    const closeDeviceModalBtn = document.getElementById('close-device-modal-btn');
+    const deviceBackdrop = deviceModal?.querySelector('.modal-backdrop');
+
+    const openDeviceModal = () => deviceModal.classList.remove('hidden');
+    const closeDeviceModal = () => deviceModal.classList.add('hidden');
+
+    if (addDeviceBtn && deviceModal) {
+        addDeviceBtn.addEventListener('click', openDeviceModal);
+        closeDeviceModalBtn?.addEventListener('click', closeDeviceModal);
+        deviceBackdrop?.addEventListener('click', closeDeviceModal);
+    }
+
+    // ---------- Sensor Modal ----------
+    const addSensorBtn = document.getElementById('add-sensor-btn');
+    const sensorModal = document.getElementById('sensor-modal');
+    const closeSensorModalBtn = document.getElementById('close-sensor-modal-btn');
+    const sensorBackdrop = sensorModal?.querySelector('.modal-backdrop');
+
+    const openSensorModal = () => sensorModal.classList.remove('hidden');
+    const closeSensorModal = () => sensorModal.classList.add('hidden');
+
+    if (addSensorBtn && sensorModal) {
+        addSensorBtn.addEventListener('click', openSensorModal);
+        closeSensorModalBtn?.addEventListener('click', closeSensorModal);
+        sensorBackdrop?.addEventListener('click', closeSensorModal);
+    }
       });
+
+    function showTab(tabName) {
+    // hide all sections
+    document.querySelectorAll("main section").forEach(sec => sec.classList.add("hidden"));
+
+    // remove "active" style from all nav buttons
+    document.querySelectorAll(".tab-button").forEach(btn => btn.classList.remove("active", "text-gray-800"));
+    document.querySelectorAll(".tab-button").forEach(btn => btn.classList.add("text-gray-500"));
+
+    // show the chosen section
+    document.getElementById(tabName + "-tab").classList.remove("hidden");
+
+    // highlight the clicked nav button
+    const activeBtn = Array.from(document.querySelectorAll(".tab-button"))
+        .find(btn => btn.getAttribute("onclick") === `showTab('${tabName}')`);
+    if (activeBtn) {
+        activeBtn.classList.add("active", "text-gray-800");
+        activeBtn.classList.remove("text-gray-500");
+    }
+}
 </script>
 
 

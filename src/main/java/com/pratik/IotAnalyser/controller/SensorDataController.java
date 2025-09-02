@@ -66,4 +66,10 @@ public class SensorDataController {
         List<SensorResponseDto> sensorResponseDto = sensorDataService.getSensorDataByAnomalies(anomaly);
         return ResponseEntity.ok().body(sensorResponseDto);
     }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteSensorData(@PathVariable Long id) {
+        sensorDataService.deleteSensorData(id);
+        return ResponseEntity.noContent().build();
+    }
+
 }

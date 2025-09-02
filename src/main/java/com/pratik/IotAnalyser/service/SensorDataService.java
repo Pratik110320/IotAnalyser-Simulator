@@ -117,4 +117,12 @@ public class SensorDataService {
         return sensorMapper.toResponseDto(saved);
     }
 
+
+    @Transactional
+    public void deleteSensorData(Long id) {
+        if (!sensorRepository.existsById(id)) {
+            throw new RuntimeException("Sensor data with id " + id + " not found");
+        }
+        sensorRepository.deleteById(id);
+    }
 }

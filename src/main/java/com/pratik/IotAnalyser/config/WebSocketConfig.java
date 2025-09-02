@@ -27,11 +27,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // One STOMP endpoint for both simulator + frontend
+        registry.addEndpoint("/ws-sensor-data")
+                .setAllowedOriginPatterns("*"); // plain ws/wss
         registry.addEndpoint("/ws-sensor-data")
                 .setAllowedOriginPatterns("*")
-                .withSockJS();
+                .withSockJS(); // fallback
     }
+
 
     @Override
     public boolean configureMessageConverters(List<MessageConverter> messageConverters) {

@@ -1862,16 +1862,14 @@
         state.__simControlSubs = null;
       }
 
-     /* WebSocket connect */
+ /* WebSocket connect */
 async function connectWebSocket() {
-    debugLog('Fetching WebSocket URL from backend...');
+    debugLog('Connecting WebSocket...');
     try {
-        // fetch dynamic URL from backend
-        const res = await fetch(`${API_BASE}/api/config/ws-url`);
-        const { wsUrl } = await res.json();
-        debugLog(`Connecting WebSocket to ${wsUrl}`);
+    const socketFactory = () => new WebSocket(
+    `${window.location.origin.replace(/^http/, 'ws')}/ws-sensor-data`
+);
 
-        const socketFactory = () => new SockJS(wsUrl);
         state.stompClient = new StompJs.Client({
             webSocketFactory: socketFactory,
             reconnectDelay: 5000,
@@ -1879,7 +1877,7 @@ async function connectWebSocket() {
             heartbeatOutgoing: 4000
         });
 
-        state.stompClient.onConnect = (frame) => {
+        state.stompClient.onConnect = () => {
             debugLog('WebSocket connected');
             updateWsStatus(true);
             toast('WebSocket connected successfully');
@@ -1939,6 +1937,7 @@ async function connectWebSocket() {
         toast('WebSocket connection failed', true);
     }
 }
+
 
       /* ---------------- Other Controls ---------------- */
       async function clearAllData() {

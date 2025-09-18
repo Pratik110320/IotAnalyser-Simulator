@@ -27,7 +27,7 @@ public class SecurityConfig {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         // Make sure to permit both authenticate and register endpoints
-                        .requestMatchers("/api/auth/**", "/ws-sensor-data/**", "/index.html", "/").permitAll()
+                        .requestMatchers("/api/auth/**", "/ws-sensor-data/**", "/").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));

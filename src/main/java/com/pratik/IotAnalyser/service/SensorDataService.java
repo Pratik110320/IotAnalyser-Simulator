@@ -21,12 +21,14 @@ public class SensorDataService {
     private final SensorRepository sensorRepository;
     private final SensorMapper sensorMapper;
     private final DeviceRepository deviceRepository;
+    private final AlertService alertService;
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
-    public SensorDataService(SensorRepository sensorRepository, SensorMapper sensorMapper, DeviceRepository deviceRepository) {
+    public SensorDataService(SensorRepository sensorRepository, SensorMapper sensorMapper, DeviceRepository deviceRepository, AlertService alertService) {
         this.sensorRepository = sensorRepository;
         this.sensorMapper = sensorMapper;
         this.deviceRepository = deviceRepository;
+        this.alertService = alertService;
     }
 
 
@@ -52,6 +54,7 @@ public class SensorDataService {
 
         // Save sensor data
         SensorData savedSensor = sensorRepository.save(sensorData);
+        alertService.checkForAlerts(savedSensor);
 
         // Broadcast saved data to WebSocket subscribers
         SensorResponseDto broadcastDto = sensorMapper.toResponseDto(savedSensor);

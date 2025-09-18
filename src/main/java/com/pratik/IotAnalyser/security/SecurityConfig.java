@@ -26,6 +26,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // Make sure to permit both authenticate and register endpoints
                         .requestMatchers("/api/auth/**", "/ws-sensor-data/**", "/index.html", "/").permitAll()
                         .anyRequest().authenticated()
                 )

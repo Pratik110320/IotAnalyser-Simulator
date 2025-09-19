@@ -1,11 +1,13 @@
 package com.pratik.IotAnalyser;
 
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import com.pratik.IotAnalyser.repository.DeviceRepository; // Import your repository
 import com.pratik.IotAnalyser.model.Device; // Import your entity
 
 @Component
+@Order(1)
 public class DataSeeder implements CommandLineRunner {
 
     private final DeviceRepository deviceRepository;

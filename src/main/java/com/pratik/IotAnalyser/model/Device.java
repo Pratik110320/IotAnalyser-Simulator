@@ -28,7 +28,14 @@ public class Device {
         this.deviceId = deviceId;
     }
 
-    public Device( String deviceName, String deviceType, LocalDateTime registeredAt, LocalDateTime lastActiveAt, Status status) {
+    public Device(Long deviceId, String deviceName, String deviceType, Status status) {
+        this.deviceId = deviceId;
+        this.deviceName = deviceName;
+        this.deviceType = deviceType;
+        this.status = status;
+    }
+
+    public Device(String deviceName, String deviceType, LocalDateTime registeredAt, LocalDateTime lastActiveAt, Status status) {
 
         this.deviceName = deviceName;
         this.deviceType = deviceType;

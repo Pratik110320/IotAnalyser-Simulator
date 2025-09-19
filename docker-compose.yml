@@ -1,19 +1,36 @@
 version: "3.9"
 
 services:
+  # The Spring Boot Backend Service
   iotanalyser:
     build:
-      context: .
+      context: . # Assumes backend Dockerfile is in the root directory
       dockerfile: Dockerfile
-#    container_name: iotanalyser_new
-    image: iotanalyser:new
+    image: iotanalyser-backend:latest
+    container_name: iotanalyser_backend
     ports:
-      - "8083:8083"   # <--- IMPORTANT: map host 8081 to container 8080
+      - "8083:8083"
+    # This section reads variables from the .env file
+    # and passes them into the container.
     environment:
-      SPRING_PROFILES_ACTIVE: h2
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - SPRING_PROFILES_ACTIVE=h2
+      - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
     restart: unless-stopped
+
+  # The React Frontend Service
+  frontend:
+    build:
+      context: ./iot-analyser-frontend # Path to your frontend app
+      dockerfile: Dockerfile
+      args:
+        # This build-time argument tells the React app how to find the backend
+        - REACT_APP_API_BASE_URL=http://localhost:8083
+    image: iotanalyser-frontend:latest
+    container_name: iotanalyser_frontend
+    ports:
+      - "3000:80" # Map host port 3000 to the container's Nginx port 80
+    depends_on:
+      - iotanalyser # Ensures the backend starts before the frontend
+    restart: unless-stopped
+

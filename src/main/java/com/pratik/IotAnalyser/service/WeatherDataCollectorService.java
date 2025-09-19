@@ -20,6 +20,7 @@ public class WeatherDataCollectorService {
     private final SensorDataService sensorDataService;
     private final RestTemplate restTemplate;
 
+    // This now reads from an environment variable named OPENWEATHERMAP_API_KEY
     @Value("${openweathermap.api.key}")
     private String apiKey;
 
@@ -28,8 +29,13 @@ public class WeatherDataCollectorService {
         this.restTemplate = restTemplate;
     }
 
-    @Scheduled(fixedRate = 60000) // Every 10 minutes
+    @Scheduled(fixedRate = 600000) // Every 10 minutes
     public void fetchWeatherData() {
+        if (apiKey == null || apiKey.isEmpty() || apiKey.equals("your-api-key-here")) {
+            log.warn("OpenWeatherMap API key is not configured. Skipping weather data fetch.");
+            return;
+        }
+
         String url = "https://api.openweathermap.org/data/2.5/weather?q=Nagpur&appid=" + apiKey + "&units=metric";
         try {
             var weatherData = restTemplate.getForObject(url, Map.class);
@@ -49,7 +55,8 @@ public class WeatherDataCollectorService {
             }
 
         } catch (Exception e) {
-            log.error("Error while fetching weather data from OpenWeatherMap API", e);
+            // IMPROVED LOGGING: This will now print the full error details to your Render logs
+            log.error("Error while fetching weather data from OpenWeatherMap API. Full error:", e);
         }
     }
 }

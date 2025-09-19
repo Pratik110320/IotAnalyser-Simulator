@@ -6,17 +6,22 @@ services:
     plan: starter
     buildCommand: ""
     startCommand: ""   # Dockerfile ENTRYPOINT will run
-    dockerfilePath: ./iotanalyser/Dockerfile
+    dockerfilePath: ./iotanalyser/Dockerfile # Corrected path
     autoDeploy: true
     envVars:
       - key: SPRING_PROFILES_ACTIVE
         value: h2
+      # Add these lines to inject your secrets
+      - key: OPENWEATHERMAP_API_KEY
+        fromSecret: true
+      - key: JWT_SECRET
+        fromSecret: true
   - type: worker
     name: devicesimulator
     env: docker
     branch: main
     plan: starter
-    dockerfilePath: ./devicesimulator/Dockerfile
+    dockerfilePath: ./devicesimulator/Dockerfile # Corrected path
     autoDeploy: true
     envVars:
       - key: SPRING_PROFILES_ACTIVE
@@ -26,6 +31,7 @@ services:
       - key: SIMULATOR_DEVICE_REGISTRATION_URL
         value: http://iotanalyser:8080/device
       - key: SIMULATOR_WEBSOCKET_URL
+        # Use Render's internal service address for communication
         value: ws://iotanalyser:8080/ws-sensor-data
       - key: SIMULATOR_DEVICE_COUNT
         value: "3"

@@ -1,19 +1,16 @@
 package com.pratik.IotAnalyser.dtos.sensorDto;
 
 import com.pratik.IotAnalyser.model.SensorData;
-import org.mapstruct.BeanMapping;
-import org.mapstruct.Mapper;
-import org.mapstruct.MappingTarget;
-import org.mapstruct.NullValuePropertyMappingStrategy;
+import org.mapstruct.*;
 
 import java.util.List;
 
 @Mapper(componentModel = "spring")
 public interface SensorMapper {
 
-    // Entity to Response DTO (Fixed to return SensorResponseDto)
-    SensorResponseDto toResponseDto(SensorData sensorData);
 
+    @Mapping(source = "device.deviceId", target = "deviceId")
+    SensorResponseDto toResponseDto(SensorData sensorData);
     // Request DTO to Entity
     SensorData toEntity(SensorRegistrationDto requestDto);
 

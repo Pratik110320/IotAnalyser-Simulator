@@ -9,8 +9,15 @@ public class SensorResponseDto {
     private String unit;
     private LocalDateTime timestamp;
     private Boolean anomaly;
-
+    private Long deviceId;
     public SensorResponseDto() {
+    }
+    public Long getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(Long deviceId) {
+        this.deviceId = deviceId;
     }
 
     public Long getId() {

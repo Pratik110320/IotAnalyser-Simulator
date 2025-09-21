@@ -1,3 +1,4 @@
+// pratik110320/iotanalyser-simulator/IotAnalyser-Simulator-ba46f81a8355039545da0025050cefdd674b83a0/src/main/java/com/pratik/IotAnalyser/simulator/MultiDeviceSimulatorService.java
 package com.pratik.IotAnalyser.simulator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,7 +40,7 @@ public class MultiDeviceSimulatorService {
     public void waitForAnalyser() {
         try {
             Thread.sleep(3000);
-    } catch (InterruptedException e)
+        } catch (InterruptedException e)
         {
             Thread.currentThread().interrupt();
             System.out.println("waitForAnalyser interrupted");
@@ -156,6 +157,8 @@ public class MultiDeviceSimulatorService {
             // pick a sensor type for this tick (random or deterministic per device)
             String sensorType = pickSensorTypeFor(deviceId);
             double value = nextValueFor(sensorType, deviceId);
+            boolean anomaly = Math.random() < 0.2; // 20% chance of anomaly
+
 
             Map<String, Object> data = new HashMap<>();
             data.put("deviceId", deviceId);
@@ -163,7 +166,7 @@ public class MultiDeviceSimulatorService {
             data.put("value", Math.round(value * 100.0) / 100.0); // round to 2 decimals
             data.put("timestamp", Instant.now().toString());      // ISO timestamp
             data.put("time", LocalTime.now().format(TIME_FMT));   // HH:mm:ss for display if needed
-
+            data.put("anomaly", anomaly);
             // send the Map object directly — Spring's message converters will turn it into JSON
             messagingTemplate.convertAndSend("/topic/sensor-data", data);
 

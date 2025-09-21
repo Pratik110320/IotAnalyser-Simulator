@@ -1,12 +1,11 @@
 package com.pratik.IotAnalyser.exception;
 
 import com.pratik.IotAnalyser.model.ApiError;
-import org.apache.kafka.common.errors.ResourceNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-
+import com.pratik.IotAnalyser.exception.ResourceNotFoundException;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Map;

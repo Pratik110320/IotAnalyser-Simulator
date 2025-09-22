@@ -29,7 +29,7 @@ public class WeatherDataCollectorService {
         this.restTemplate = restTemplate;
     }
 
-    @Scheduled(fixedRate = 6000) // Every 10 minutes
+    @Scheduled(fixedRate = 30000) // Every 10 minutes
     public void fetchWeatherData() {
         if (apiKey == null || apiKey.isEmpty() || apiKey.equals("84b2221fb299c9649673758febaed6f8")) {
             log.warn("OpenWeatherMap API key is not configured. Skipping weather data fetch.");

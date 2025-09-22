@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/auth/**", "/ws-sensor-data/**", "/", "/actuator/health", "/simulator/**", "/error").permitAll()
+                        .requestMatchers("/api/auth/**", "/ws-sensor-data/**", "/", "/actuator/health", "/simulator/**","/error").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));

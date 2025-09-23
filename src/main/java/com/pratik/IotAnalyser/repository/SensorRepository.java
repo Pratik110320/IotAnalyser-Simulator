@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -14,4 +15,6 @@ public interface SensorRepository extends JpaRepository<SensorData,Long> {
     List<SensorData> findSensorDataByType(String type);
 
     List<SensorData> findSensorDataByAnomaly(Boolean anomaly);
+    List<SensorData> findByTimestampBetween(LocalDateTime start, LocalDateTime end);
+
 }

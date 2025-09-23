@@ -19,13 +19,14 @@ public class AnalyticsService {
         this.sensorRepository = sensorRepository;
     }
 
+
     public Map<String, DoubleSummaryStatistics> getDailyStatistics(LocalDateTime date) {
         LocalDateTime startOfDay = date.toLocalDate().atStartOfDay();
         LocalDateTime endOfDay = startOfDay.plusDays(1);
 
-        List<SensorData> sensorData = sensorRepository.findAll().stream()
-                .filter(data -> !data.getTimestamp().isBefore(startOfDay) && data.getTimestamp().isBefore(endOfDay))
-                .collect(Collectors.toList());
+
+        List<SensorData> sensorData = sensorRepository.findByTimestampBetween(startOfDay, endOfDay);
+
 
         return sensorData.stream()
                 .collect(Collectors.groupingBy(
